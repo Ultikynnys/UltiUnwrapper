@@ -35,6 +35,7 @@ Input / output:
       --dump-stages <dir>    Write per-stage JSON, OBJ, and SVG artifacts
       --stage <id>           Stop writing after this stage
       --validate-only        Run all stages but skip the mesh export
+      --rewrap               Ignore input UVs and generate new seams
 
 Config:
       --preset <file>        Load an unwrap preset JSON
@@ -224,6 +225,7 @@ export async function runCli(argv: string[]): Promise<number> {
       version: BUILD_VERSION,
       inputName: basename(input),
       output: willWrite ? output : undefined,
+      preserveSourceUvs: !options.rewrap,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

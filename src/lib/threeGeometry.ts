@@ -56,10 +56,12 @@ export function flattenScene(
   const materialOfTriangle: number[] = [];
   const sourceTriangle: number[] = [];
   const sourceVertex: number[] = [];
+  const triangleUvs: number[] = [];
   const objectNames: string[] = [];
   const skipped: Array<{ name: string; reason: string }> = [];
   let meshCount = 0;
   let instanceCount = 0;
+  let everyMeshHasUvs = true;
 
   const append = (geometry: BufferGeometry, matrix: Matrix4, name: string): void => {
     const position = geometry.getAttribute('position');
@@ -68,6 +70,8 @@ export function flattenScene(
       return;
     }
     const index = geometry.getIndex();
+    const uv = geometry.getAttribute('uv');
+    if (!uv) everyMeshHasUvs = false;
     const triangleCount = Math.floor((index ? index.count : position.count) / 3);
     if (triangleCount === 0) {
       skipped.push({ name, reason: 'Geometry has no triangles.' });
@@ -89,6 +93,15 @@ export function flattenScene(
       const b = index ? index.getX(base + 1) : base + 1;
       const c = index ? index.getX(base + 2) : base + 2;
       indices.push(vertexOffset + a, vertexOffset + b, vertexOffset + c);
+      if (uv) {
+        triangleUvs.push(
+          uv.getX(a), uv.getY(a),
+          uv.getX(b), uv.getY(b),
+          uv.getX(c), uv.getY(c),
+        );
+      } else {
+        triangleUvs.push(0, 0, 0, 0, 0, 0);
+      }
       objectOfTriangle.push(objectIndex);
       materialOfTriangle.push(material[tri]);
       sourceTriangle.push(tri);
@@ -122,6 +135,7 @@ export function flattenScene(
       materialOfTriangle: new Int32Array(materialOfTriangle),
       sourceTriangle: new Uint32Array(sourceTriangle),
       sourceVertex: new Uint32Array(sourceVertex),
+      ...(everyMeshHasUvs ? { triangleUvs: new Float32Array(triangleUvs) } : {}),
       objectNames,
     },
     skipped,

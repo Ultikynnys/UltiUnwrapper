@@ -281,6 +281,8 @@ export function conditionMesh(raw: RawMesh, options: Partial<ConditionOptions> =
   const objectOfTriangle: number[] = [];
   const materialOfTriangle: number[] = [];
   const sourceTriangle: number[] = [];
+  const keptUvs: number[] = [];
+  const hasUvs = Boolean(raw.triangleUvs && raw.triangleUvs.length >= inputTriangleCount * 6);
   let degenerateRemoved = 0;
   const areaEpsilon = Math.max(AREA_EPSILON, bounds.diagonal * bounds.diagonal * 1e-12);
 
@@ -322,6 +324,11 @@ export function conditionMesh(raw: RawMesh, options: Partial<ConditionOptions> =
       continue;
     }
     keptTriangles.push(a, b, c);
+    if (hasUvs && raw.triangleUvs) {
+      for (let corner = 0; corner < 6; corner += 1) {
+        keptUvs.push(raw.triangleUvs[tri * 6 + corner]);
+      }
+    }
     objectOfTriangle.push(raw.objectOfTriangle[tri] ?? 0);
     materialOfTriangle.push(raw.materialOfTriangle[tri] ?? -1);
     sourceTriangle.push(raw.sourceTriangle[tri] ?? tri);
@@ -358,6 +365,7 @@ export function conditionMesh(raw: RawMesh, options: Partial<ConditionOptions> =
     materialOfTriangle: new Int32Array(materialOfTriangle),
     sourceTriangle: new Uint32Array(sourceTriangle),
     sourceVertex: welded.sourceVertex,
+    ...(hasUvs ? { triangleUvs: new Float32Array(keptUvs) } : {}),
     objectNames: raw.objectNames,
     vertexCount: welded.sourceVertex.length,
     triangleCount,

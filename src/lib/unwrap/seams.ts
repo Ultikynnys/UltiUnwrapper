@@ -8,6 +8,8 @@ export type SeamOptions = {
   splitByObject: boolean;
   /** Keep source material groups as separate charts. */
   splitByMaterial: boolean;
+  /** Use UV discontinuities from the input as seams. Default true. */
+  useUvSeams?: boolean;
 };
 
 export type SeamResult = {
@@ -20,6 +22,7 @@ export type SeamResult = {
   objectSeamCount: number;
   materialSeamCount: number;
   dihedralSeamCount: number;
+  uvSeamCount?: number;
   issues: Issue[];
 };
 
@@ -48,6 +51,7 @@ export function computeSeams(
   let objectSeamCount = 0;
   let materialSeamCount = 0;
   let dihedralSeamCount = 0;
+  let uvSeamCount = 0;
   const threshold = Math.max(0, Math.min(180, options.seamAngle));
   const cosThreshold = Math.cos((threshold * Math.PI) / 180);
 
@@ -96,6 +100,37 @@ export function computeSeams(
     }
   }
 
+  const uvs = mesh.triangleUvs;
+  if (uvs && options.useUvSeams !== false) {
+    const uvOf = (triangle: number, vertex: number): [number, number] | null => {
+      for (let corner = 0; corner < 3; corner += 1) {
+        if (mesh.indices[triangle * 3 + corner] !== vertex) continue;
+        const offset = (triangle * 3 + corner) * 2;
+        return [uvs[offset], uvs[offset + 1]];
+      }
+      return null;
+    };
+    for (let edgeIndex = 0; edgeIndex < topology.edges.length; edgeIndex += 1) {
+      const edge = topology.edges[edgeIndex];
+      if (seamEdge[edgeIndex] || edge.triangles.length !== 2) continue;
+      const [t0, t1] = edge.triangles;
+      const a0 = uvOf(t0, edge.a);
+      const b0 = uvOf(t0, edge.b);
+      const a1 = uvOf(t1, edge.a);
+      const b1 = uvOf(t1, edge.b);
+      if (!a0 || !b0 || !a1 || !b1) continue;
+      const delta = Math.max(
+        Math.hypot(a0[0] - a1[0], a0[1] - a1[1]),
+        Math.hypot(b0[0] - b1[0], b0[1] - b1[1]),
+      );
+      if (delta <= 1e-5) continue;
+      seamEdge[edgeIndex] = 1;
+      uvSeamCount += 1;
+      interiorSeamCount += 1;
+      interiorSeamLength += edgeLength(mesh, edge.a, edge.b);
+    }
+  }
+
   const issues: Issue[] = [];
   if (nonManifoldCount > 0) {
     issues.push({
@@ -116,6 +151,7 @@ export function computeSeams(
     objectSeamCount,
     materialSeamCount,
     dihedralSeamCount,
+    uvSeamCount,
     issues,
   };
 }

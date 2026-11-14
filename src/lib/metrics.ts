@@ -64,7 +64,7 @@ export function stageCards(stage: StageSnapshot): MetricCard[] {
         { label: 'Angle p50', value: `${fixed(stage.stats.angleP50, 2)} deg` },
         { label: 'Angle p95', value: `${fixed(stage.stats.angleP95, 2)} deg` },
         { label: 'Area p95', value: fixed(stage.stats.areaP95, 2), hint: 'octaves' },
-        { label: 'Flipped', value: count(stage.stats.flipped), hint: `${count(stage.stats.fallbackCharts)} fallback` },
+        { label: 'Flipped', value: count(stage.stats.flipped), hint: `${count(stage.stats.failedCharts)} failed` },
       ];
     case 'normalize':
       return [

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { computeFaceGeometry, conditionMesh } from '../src/lib/unwrap/mesh';
 import { buildTopology } from '../src/lib/unwrap/topology';
-import { segmentMesh } from '../src/lib/unwrap/charts';
+import { segmentCharts, segmentMesh } from '../src/lib/unwrap/charts';
 import { parameterizeMesh } from '../src/lib/unwrap/parameterize';
 import { percentile, signedTriangleArea2D, summarize } from '../src/lib/unwrap/metrics';
 import { solveConjugateGradient } from '../src/lib/unwrap/solver';
 import { solveLscm, type LscmTriangle } from '../src/lib/unwrap/lscm';
-import type { RawMesh } from '../src/lib/unwrap/types';
+import type { RawMesh, Segmentation } from '../src/lib/unwrap/types';
 import { makeCube, makeCylinder, makePlaneGrid, makeSphere } from './helpers/meshes';
 
 function parameterize(raw: RawMesh) {
@@ -148,9 +148,9 @@ describe('parameterization', () => {
     expect(result.stats.angleP95).toBeLessThan(0.001);
     expect(result.stats.areaP95).toBeLessThan(0.001);
     expect(result.stats.flipped).toBe(0);
-    expect(result.stats.fallbackCharts).toBe(0);
+    expect(result.stats.failedCharts).toBe(0);
     expect(result.charts.every((chart) => chart.solverIterations === 0)).toBe(true);
-    expect(result.charts.every((chart) => chart.fallback === false)).toBe(true);
+    expect(result.charts.every((chart) => chart.failed === false)).toBe(true);
     expect(triangleUvArea(result.triangleUvs)).toBeCloseTo(24, 5);
     for (const chart of result.charts) {
       expect(chart.uvArea).toBeCloseTo(4, 6);
@@ -164,7 +164,7 @@ describe('parameterization', () => {
   it('flattens an open plane exactly', () => {
     const { result } = parameterize(makePlaneGrid(2, 2));
     expect(result.charts).toHaveLength(1);
-    expect(result.charts[0].fallback).toBe(false);
+    expect(result.charts[0].failed).toBe(false);
     expect(result.stats.angleP95).toBeLessThan(0.001);
     expect(result.charts[0].uvArea).toBeCloseTo(4, 6);
     expect(Math.max(result.charts[0].bbox.maxU, result.charts[0].bbox.maxV)).toBeGreaterThan(2);
@@ -179,7 +179,7 @@ describe('parameterization', () => {
     expect(side.triangles.length).toBe(24);
     expect(side.solverIterations).toBeGreaterThan(0);
     expect(side.solverConverged).toBe(true);
-    expect(side.fallback).toBe(false);
+    expect(side.failed).toBe(false);
     expect(result.stats.angleP95).toBeLessThan(5);
     expect(result.stats.flipped).toBe(0);
     expect(triangleUvArea(result.triangleUvs)).toBeGreaterThan(10);
@@ -188,12 +188,31 @@ describe('parameterization', () => {
   it('produces a finite cut-sphere layout', () => {
     const { result } = parameterize(makeSphere(12, 6, 1));
     expect(result.charts).toHaveLength(1);
-    expect(result.charts[0].fallback === true || result.charts[0].solverIterations > 0).toBe(true);
+    expect(result.charts[0].failed).toBe(false);
     expect(Array.from(result.triangleUvs).every((value) => Number.isFinite(value))).toBe(true);
     expect(result.charts[0].uvArea).toBeGreaterThan(0);
     expect(Number.isFinite(result.stats.angleP95)).toBe(true);
     expect(result.charts[0].bbox.maxU).toBeGreaterThan(0);
     expect(result.charts[0].bbox.maxV).toBeGreaterThan(0);
+  });
+
+  it('reports charts that cannot be flattened as a disk', () => {
+    const { mesh } = conditionMesh(makeCube(2));
+    const topology = buildTopology(mesh);
+    const face = computeFaceGeometry(mesh);
+    const charts = segmentCharts(mesh, topology, new Uint8Array(topology.edges.length), face);
+    const segmentation: Segmentation = {
+      seamEdge: new Uint8Array(topology.edges.length),
+      cutEdgeIndices: new Uint32Array(),
+      charts: charts.charts,
+      chartOfTriangle: charts.chartOfTriangle,
+      stats: {},
+      issues: [],
+    };
+    const result = parameterizeMesh(mesh, segmentation, face, topology);
+    expect(result.stats.failedCharts).toBe(1);
+    expect(result.charts[0].failure).toBe('not-disk');
+    expect(result.issues[0].message).toMatch(/not a disk/);
   });
 
   it('is deterministic', () => {
@@ -209,7 +228,7 @@ describe('parameterization', () => {
       chart.triangles.length > largest.triangles.length ? chart : largest
     ));
     expect(side.localVertex.length).toBeGreaterThan(256);
-    expect(side.fallback).toBe(false);
+    expect(side.failed).toBe(false);
     expect(side.solverIterations).toBeGreaterThan(0);
     expect(Array.from(result.triangleUvs).every((value) => Number.isFinite(value))).toBe(true);
   });

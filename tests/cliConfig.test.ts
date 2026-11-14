@@ -38,7 +38,7 @@ describe('CLI parsing', () => {
       '-i', 'in.obj', '-o', 'out.glb', '--format', 'glb',
       '--report', 'report.json', '--dump-stages', 'stages',
       '--preset', 'preset.json', '--dump-config', 'resolved.json',
-      '--json', '--check', '--validate-only', '--stage', 'pack',
+      '--json', '--check', '--validate-only', '--rewrap', '--stage', 'pack',
       '--atlas', '1024', '--padding', '4', '--seam-angle', '30',
       '--texel-density', '512', '--weld-epsilon', '0.001',
       '--tolerance', '1e-6', '--max-iterations', '100',
@@ -57,6 +57,7 @@ describe('CLI parsing', () => {
     expect(options.json).toBe(true);
     expect(options.check).toBe(true);
     expect(options.validateOnly).toBe(true);
+    expect(options.rewrap).toBe(true);
     expect(options.stage).toBe('pack');
     expect(options.overrides).toMatchObject({
       atlasResolution: 1024,

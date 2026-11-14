@@ -83,6 +83,8 @@ Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per wo
 
 A closed chart cannot be flattened as a disk. Stage 2 finds a geodesic cut path, marks it as a seam, and resegments. The cut is shown in pink and counted in `cutsAdded`.
 
+When the input has UVs, the pipeline reuses its UV islands and existing flattening by default, then normalizes density and repacks them. This avoids destroying a usable artist layout. Use `--rewrap` in the CLI to ignore source UVs and generate new seams; models without UVs always use the automatic path.
+
 ## CLI
 
 The CLI uses the same pipeline and report format as the app.
@@ -103,6 +105,7 @@ Common flags:
 | `--dump-stages <dir>` | Per-stage JSON plus OBJ and SVG where available |
 | `--stage <id>` | Stop writing after a stage; earlier stages still run |
 | `--validate-only` | Run every stage but skip mesh export |
+| `--rewrap` | Ignore input UVs and generate new seams |
 | `--atlas`, `--padding`, `--seam-angle`, `--texel-density` | Core layout settings |
 | `--preset <file>` | Load an unwrap preset |
 | `--dump-config [<file>]` | Write resolved settings and exit |

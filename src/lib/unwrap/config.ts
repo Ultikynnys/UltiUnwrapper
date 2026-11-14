@@ -55,7 +55,7 @@ export const DEFAULT_CONFIG: UnwrapConfig = {
   allowRotation: true,
   tolerance: 1e-10,
   maxIterations: 2000,
-  maxFlippedFraction: 0.05,
+  maxFlippedFraction: 0,
   occupancyResolution: 1024,
   thresholds: {
     maxOverlapFraction: 0.001,

@@ -77,7 +77,7 @@ describe('texel density normalization', () => {
       expect(density.faceTexelDensity[face]).toBeCloseTo(256, 3);
       expect(density.densityRatio[face]).toBeCloseTo(1, 5);
     }
-    expect(parameterization.charts.every((chart) => chart.fallback === false)).toBe(true);
+    expect(parameterization.charts.every((chart) => chart.failed === false)).toBe(true);
   });
 
   it('warns when the target density needs more than one atlas', () => {

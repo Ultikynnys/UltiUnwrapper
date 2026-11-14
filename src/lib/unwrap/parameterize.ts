@@ -5,6 +5,7 @@ import { mirrorU } from './uvMath';
 import type { FaceGeometry } from './mesh';
 import type {
   Chart,
+  ChartFailure,
   ChartUv,
   ConditionedMesh,
   Issue,
@@ -387,23 +388,6 @@ function projectedExtent(projected: Float32Array): { width: number; height: numb
   return { width: maxU - minU, height: maxV - minV };
 }
 
-function countFlipped(uvs: Float32Array, localIndices: Uint32Array): number {
-  let flipped = 0;
-  for (let triangle = 0; triangle < localIndices.length / 3; triangle += 1) {
-    const a = localIndices[triangle * 3] * 2;
-    const b = localIndices[triangle * 3 + 1] * 2;
-    const c = localIndices[triangle * 3 + 2] * 2;
-    if (signedTriangleArea2D(
-      uvs[a], uvs[a + 1],
-      uvs[b], uvs[b + 1],
-      uvs[c], uvs[c + 1],
-    ) <= EPSILON) {
-      flipped += 1;
-    }
-  }
-  return flipped;
-}
-
 /** Orders the chart's boundary as a single loop of chart-local vertices. Each
  * chart border contributes one directed half-edge, so the two sides of a cut
  * remain distinct even though they share global vertices. */
@@ -607,6 +591,170 @@ function intrinsicTriangles(mesh: ConditionedMesh, chart: Chart): LscmTriangle[]
   return triangles;
 }
 
+function failedChart(chart: Chart, failure: ChartFailure): ChartUv {
+  return {
+    chart: chart.id,
+    triangles: chart.triangles,
+    localIndices: chart.localIndices,
+    localVertex: chart.localVertex,
+    uvs: new Float32Array(chart.localVertex.length * 2),
+    worldArea: chart.worldArea,
+    uvArea: 0,
+    bbox: { minU: 0, minV: 0, maxU: 0, maxV: 0 },
+    solverIterations: 0,
+    solverResidual: 0,
+    solverConverged: false,
+    initialization: 'none',
+    failed: true,
+    failure,
+  };
+}
+
+function failureMessage(failure: ChartFailure | null): string {
+  switch (failure) {
+    case 'degenerate':
+      return 'the chart has no usable surface area.';
+    case 'not-disk':
+      return 'the chart is not a disk and has to be cut open first.';
+    case 'no-boundary-loop':
+      return 'the chart boundary could not be traced as a single loop.';
+    case 'embedding-failed':
+      return 'the harmonic boundary embedding could not be solved.';
+    case 'solve-diverged':
+      return 'the LSCM solve did not converge to a finite layout.';
+    case 'folded-solution':
+      return 'the LSCM layout folds over itself.';
+    default:
+      return 'the cause is unknown.';
+  }
+}
+
+/** Clips a convex polygon against the half plane left of the directed line
+ * (x0,y0)->(x1,y1). Points are flat [x0,y0,x1,y1,...] values. */
+function clipHalfPlane(
+  polygon: number[],
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): number[] {
+  const out: number[] = [];
+  const count = polygon.length / 2;
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  for (let index = 0; index < count; index += 1) {
+    const px = polygon[index * 2];
+    const py = polygon[index * 2 + 1];
+    const next = (index + 1) % count;
+    const qx = polygon[next * 2];
+    const qy = polygon[next * 2 + 1];
+    const sideP = dx * (py - y0) - dy * (px - x0);
+    const sideQ = dx * (qy - y0) - dy * (qx - x0);
+    if (sideP >= 0) out.push(px, py);
+    if ((sideP > 0 && sideQ < 0) || (sideP < 0 && sideQ > 0)) {
+      const t = sideP / (sideP - sideQ);
+      out.push(px + t * (qx - px), py + t * (qy - py));
+    }
+  }
+  return out;
+}
+
+/** Shared area of two counter-clockwise triangles, clamped to zero for pairs
+ * that only touch along an edge or a vertex. */
+function triangleOverlapArea(
+  a: Float32Array,
+  b: Float32Array,
+  tolerance: number,
+): number {
+  let polygon = [a[0], a[1], a[2], a[3], a[4], a[5]];
+  for (let edge = 0; edge < 3; edge += 1) {
+    const next = (edge + 1) % 3;
+    polygon = clipHalfPlane(
+      polygon,
+      b[edge * 2],
+      b[edge * 2 + 1],
+      b[next * 2],
+      b[next * 2 + 1],
+    );
+    if (polygon.length < 6) return 0;
+  }
+  let sum = 0;
+  const count = polygon.length / 2;
+  for (let index = 0; index < count; index += 1) {
+    const next = (index + 1) % count;
+    sum += polygon[index * 2] * polygon[next * 2 + 1]
+      - polygon[next * 2] * polygon[index * 2 + 1];
+  }
+  const area = Math.abs(sum) * 0.5;
+  return area > tolerance ? area : 0;
+}
+
+/** Sets a flag on every triangle that overlaps a non-adjacent triangle.
+ * Triangles that meet on a shared edge produce exactly zero overlap area, so
+ * they never count. */
+function markLayoutFolds(
+  uvs: Float32Array,
+  localIndices: Uint32Array,
+  bbox: { minU: number; minV: number; maxU: number; maxV: number },
+  minFoldArea: number,
+  folded: Uint8Array,
+): void {
+  const triangleCount = localIndices.length / 3;
+  if (triangleCount < 2) return;
+  const width = bbox.maxU - bbox.minU;
+  const height = bbox.maxV - bbox.minV;
+  if (!(width > 0) || !(height > 0)) return;
+  const tolerance = 1e-10 * width * height;
+  const cornerUv = new Float32Array(triangleCount * 6);
+  const boxes = new Float64Array(triangleCount * 4);
+  for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+    let minU = Infinity;
+    let minV = Infinity;
+    let maxU = -Infinity;
+    let maxV = -Infinity;
+    for (let corner = 0; corner < 3; corner += 1) {
+      const vertex = localIndices[triangle * 3 + corner] * 2;
+      const u = uvs[vertex];
+      const v = uvs[vertex + 1];
+      cornerUv[triangle * 6 + corner * 2] = u;
+      cornerUv[triangle * 6 + corner * 2 + 1] = v;
+      if (u < minU) minU = u;
+      if (u > maxU) maxU = u;
+      if (v < minV) minV = v;
+      if (v > maxV) maxV = v;
+    }
+    boxes[triangle * 4] = minU;
+    boxes[triangle * 4 + 1] = minV;
+    boxes[triangle * 4 + 2] = maxU;
+    boxes[triangle * 4 + 3] = maxV;
+  }
+
+  const order = new Uint32Array(triangleCount);
+  for (let triangle = 0; triangle < triangleCount; triangle += 1) order[triangle] = triangle;
+  order.sort((a, b) => boxes[a * 4] - boxes[b * 4]);
+
+  for (let i = 0; i < triangleCount; i += 1) {
+    const a = order[i];
+    const aBox = a * 4;
+    const aTri = cornerUv.subarray(a * 6, a * 6 + 6) as Float32Array;
+    for (let j = i + 1; j < triangleCount; j += 1) {
+      const b = order[j];
+      const bBox = b * 4;
+      if (boxes[bBox] > boxes[aBox + 2]) break;
+      if (boxes[bBox + 1] > boxes[aBox + 3] || boxes[bBox + 3] < boxes[aBox + 1]) continue;
+      if (boxes[bBox + 2] < boxes[aBox]) continue;
+      const bTri = cornerUv.subarray(b * 6, b * 6 + 6) as Float32Array;
+      const overlap = triangleOverlapArea(aTri, bTri, tolerance);
+      if (overlap <= 0 || overlap < minFoldArea) continue;
+      folded[a] = 1;
+      folded[b] = 1;
+    }
+  }
+}
+
+/** Flattens one chart or reports why it cannot be flattened. Curved charts
+ * need disk topology: a closed chart or one with extra boundary loops is
+ * reported instead of being forced through a planar projection. */
 function parameterizeChart(
   mesh: ConditionedMesh,
   chart: Chart,
@@ -615,95 +763,87 @@ function parameterizeChart(
   options: ParameterizeOptions,
 ): ChartUv {
   const projected = projectChart(mesh, chart, face);
-  if (!projected) {
+  if (!projected) return failedChart(chart, 'degenerate');
+  if (projected.planar && Math.abs(projected.signedArea) > EPSILON) {
+    const uvs = Float32Array.from(projected.projected);
+    const bbox = translateToOrigin(uvs);
     return {
       chart: chart.id,
       triangles: chart.triangles,
       localIndices: chart.localIndices,
       localVertex: chart.localVertex,
-      uvs: new Float32Array(chart.localVertex.length * 2),
+      uvs,
       worldArea: chart.worldArea,
-      uvArea: 0,
-      bbox: { minU: 0, minV: 0, maxU: 0, maxV: 0 },
+      uvArea: Math.abs(chartSignedArea(uvs, chart.localIndices)),
+      bbox,
       solverIterations: 0,
-      solverResidual: Infinity,
-      solverConverged: false,
-      initialization: 'none',
-      fallback: true,
+      solverResidual: 0,
+      solverConverged: true,
+      initialization: 'projection',
+      failed: false,
+      failure: null,
     };
   }
 
-  let uvs: Float32Array = Float32Array.from(projected.projected);
-  let solverIterations = 0;
-  let solverResidual = 0;
-  let solverConverged = true;
-  let initialization: 'projection' | 'harmonic' | 'none' = 'projection';
-  let fallback = false;
-
-  if (!projected.planar) {
-    const loop = chartBoundaryLoop(chart, topology);
-    let initial = loop ? harmonicEmbedding(mesh, chart, loop, topology) : null;
-    if (initial && chartSignedArea(initial, chart.localIndices) < 0) {
-      initial = mirrorU(initial);
-    }
-    if (initial && chartSignedArea(initial, chart.localIndices) > EPSILON) {
-      initialization = 'harmonic';
-      uvs = initial;
-      const extent = projectedExtent(initial);
-      const scale = Math.max(extent.width, extent.height);
-      const pins = choosePins(initial, chart.localVertex.length);
-      const triangles = intrinsicTriangles(mesh, chart);
-      if (scale > EPSILON && pins && triangles.length > 0) {
-        const normalized = new Float32Array(initial.length);
-        for (let value = 0; value < normalized.length; value += 1) {
-          normalized[value] = initial[value] / scale;
-        }
-        const solved = solveLscm(
-          chart.localVertex.length,
-          triangles,
-          normalized,
-          pins[0],
-          pins[1],
-          { tolerance: options.tolerance, maxIterations: options.maxIterations },
-        );
-        solverIterations = solved.iterations;
-        solverResidual = solved.residual;
-        solverConverged = solved.converged;
-        const solvedUvs = new Float32Array(solved.uvs.length);
-        for (let value = 0; value < solved.uvs.length; value += 1) {
-          solvedUvs[value] = solved.uvs[value] * scale;
-        }
-        const flipped = countFlipped(solvedUvs, chart.localIndices);
-        const fraction = chart.localIndices.length > 0
-          ? flipped / (chart.localIndices.length / 3)
-          : 1;
-        if (
-          Number.isFinite(solverResidual)
-          && chartSignedArea(solvedUvs, chart.localIndices) > EPSILON
-          && fraction <= (options.maxFlippedFraction ?? 0.05)
-        ) {
-          uvs = solvedUvs;
-        } else {
-          fallback = true;
-        }
-      } else {
-        fallback = true;
-      }
-    } else {
-      fallback = true;
-    }
+  if (chart.closed || chart.boundaryComponents !== 1) return failedChart(chart, 'not-disk');
+  const loop = chartBoundaryLoop(chart, topology);
+  if (!loop) return failedChart(chart, 'no-boundary-loop');
+  let initial = harmonicEmbedding(mesh, chart, loop, topology);
+  if (!initial) return failedChart(chart, 'embedding-failed');
+  if (chartSignedArea(initial, chart.localIndices) < 0) initial = mirrorU(initial);
+  if (!(chartSignedArea(initial, chart.localIndices) > EPSILON)) {
+    return failedChart(chart, 'embedding-failed');
   }
 
-  if (chartSignedArea(uvs, chart.localIndices) < 0) {
-    uvs = mirrorU(uvs);
+  const extent = projectedExtent(initial);
+  const scale = Math.max(extent.width, extent.height);
+  const pins = choosePins(initial, chart.localVertex.length);
+  const triangles = intrinsicTriangles(mesh, chart);
+  if (!(scale > EPSILON) || !pins || triangles.length === 0) {
+    return failedChart(chart, 'solve-diverged');
   }
-  if (chartSignedArea(uvs, chart.localIndices) <= EPSILON) {
-    uvs = Float32Array.from(projected.projected);
-    fallback = true;
+  const normalized = new Float32Array(initial.length);
+  for (let value = 0; value < normalized.length; value += 1) {
+    normalized[value] = initial[value] / scale;
   }
-
+  const solved = solveLscm(
+    chart.localVertex.length,
+    triangles,
+    normalized,
+    pins[0],
+    pins[1],
+    { tolerance: options.tolerance, maxIterations: options.maxIterations },
+  );
+  if (!Number.isFinite(solved.residual)) return failedChart(chart, 'solve-diverged');
+  const uvs = new Float32Array(solved.uvs.length);
+  for (let value = 0; value < solved.uvs.length; value += 1) {
+    uvs[value] = solved.uvs[value] * scale;
+  }
+  if (chartSignedArea(uvs, chart.localIndices) < 0) return failedChart(chart, 'folded-solution');
+  const triangleCount = chart.localIndices.length / 3;
   const bbox = translateToOrigin(uvs);
-  const uvArea = Math.abs(chartSignedArea(uvs, chart.localIndices));
+  const density = options.texelDensity ?? 0;
+  const minFoldArea = density > 0 ? 1 / (density * density) : 0;
+  const folded = new Uint8Array(triangleCount);
+  markLayoutFolds(uvs, chart.localIndices, bbox, minFoldArea, folded);
+  const failedFaces: number[] = [];
+  for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+    const a = chart.localIndices[triangle * 3] * 2;
+    const b = chart.localIndices[triangle * 3 + 1] * 2;
+    const c = chart.localIndices[triangle * 3 + 2] * 2;
+    if (signedTriangleArea2D(
+      uvs[a], uvs[a + 1],
+      uvs[b], uvs[b + 1],
+      uvs[c], uvs[c + 1],
+    ) <= EPSILON) {
+      folded[triangle] = 1;
+    }
+    if (folded[triangle]) failedFaces.push(triangle);
+  }
+  const allowed = options.maxFlippedFraction ?? 0;
+  if (triangleCount === 0 || failedFaces.length / triangleCount > allowed) {
+    return failedChart(chart, 'folded-solution');
+  }
   return {
     chart: chart.id,
     triangles: chart.triangles,
@@ -711,13 +851,52 @@ function parameterizeChart(
     localVertex: chart.localVertex,
     uvs,
     worldArea: chart.worldArea,
-    uvArea,
+    uvArea: Math.abs(chartSignedArea(uvs, chart.localIndices)),
     bbox,
-    solverIterations,
-    solverResidual,
-    solverConverged,
-    initialization,
-    fallback,
+    solverIterations: solved.iterations,
+    solverResidual: solved.residual,
+    solverConverged: solved.converged,
+    initialization: 'harmonic',
+    failed: false,
+    failure: null,
+  };
+}
+
+function sourceChart(mesh: ConditionedMesh, chart: Chart): ChartUv | null {
+  const source = mesh.triangleUvs;
+  if (!source) return null;
+  const uvs = new Float32Array(chart.localVertex.length * 2);
+  const seen = new Uint8Array(chart.localVertex.length);
+  for (let local = 0; local < chart.triangles.length; local += 1) {
+    const triangle = chart.triangles[local];
+    for (let corner = 0; corner < 3; corner += 1) {
+      const vertex = chart.localIndices[local * 3 + corner];
+      if (seen[vertex]) continue;
+      const offset = triangle * 6 + corner * 2;
+      const u = source[offset];
+      const v = source[offset + 1];
+      if (!Number.isFinite(u) || !Number.isFinite(v)) return null;
+      uvs[vertex * 2] = u;
+      uvs[vertex * 2 + 1] = v;
+      seen[vertex] = 1;
+    }
+  }
+  const bbox = translateToOrigin(uvs);
+  return {
+    chart: chart.id,
+    triangles: chart.triangles,
+    localIndices: chart.localIndices,
+    localVertex: chart.localVertex,
+    uvs,
+    worldArea: chart.worldArea,
+    uvArea: Math.abs(chartSignedArea(uvs, chart.localIndices)),
+    bbox,
+    solverIterations: 0,
+    solverResidual: 0,
+    solverConverged: true,
+    initialization: 'source',
+    failed: false,
+    failure: null,
   };
 }
 
@@ -731,9 +910,11 @@ export function parameterizeMesh(
   topology: MeshTopology,
   options: ParameterizeOptions = {},
 ): ParameterizeResult {
-  const charts = segmentation.charts.map(
-    (chart) => parameterizeChart(mesh, chart, face, topology, options),
-  );
+  const charts = segmentation.charts.map((chart) => (
+    options.sourceUvs && mesh.triangleUvs
+      ? sourceChart(mesh, chart) ?? parameterizeChart(mesh, chart, face, topology, options)
+      : parameterizeChart(mesh, chart, face, topology, options)
+  ));
   const triangleUvs = new Float32Array(mesh.triangleCount * 6);
   for (const chart of charts) {
     for (let local = 0; local < chart.triangles.length; local += 1) {
@@ -746,14 +927,15 @@ export function parameterizeMesh(
     }
   }
 
-  const metrics = computeFaceMetrics(mesh, charts, triangleUvs);
+  const flattened = charts.filter((chart) => !chart.failed);
+  const metrics = computeFaceMetrics(mesh, flattened, triangleUvs);
   const angleSummary = summarize(metrics.angleDistortion);
   const areaSummary = summarize(metrics.areaDistortion);
   let flipped = 0;
   for (const value of metrics.flipped) flipped += value;
-  const fallbackCharts = charts.filter((chart) => chart.fallback).length;
+  const failedCharts = charts.filter((chart) => chart.failed).length;
   const harmonicCharts = charts.filter((chart) => chart.initialization === 'harmonic').length;
-  const solverFailures = charts.filter((chart) => !chart.solverConverged).length;
+  const solverFailures = charts.filter((chart) => !chart.failed && !chart.solverConverged).length;
   let solverIterationsMax = 0;
   let solverResidualMax = 0;
   let uvAreaTotal = 0;
@@ -766,13 +948,15 @@ export function parameterizeMesh(
   }
 
   const issues: Issue[] = [];
-  if (fallbackCharts > 0) {
+  for (const chart of charts) {
+    if (!chart.failed) continue;
     issues.push({
       stage: 'parameterize',
-      severity: 'warn',
-      code: 'parameterization-fallback',
-      message: `${fallbackCharts} chart${fallbackCharts === 1 ? '' : 's'} fell back from LSCM refinement.`,
-      value: fallbackCharts,
+      severity: 'error',
+      chart: chart.chart,
+      code: 'chart-flatten-failed',
+      message: `Chart ${chart.chart} could not be flattened: ${failureMessage(chart.failure)}`,
+      value: 1,
     });
   }
   if (flipped > 0) {
@@ -821,7 +1005,7 @@ export function parameterizeMesh(
     areaP95: Number(areaSummary.p95.toFixed(4)),
     areaMax: Number(areaSummary.max.toFixed(4)),
     flipped,
-    fallbackCharts,
+    failedCharts,
     harmonicCharts,
     solverFailures,
     solverIterationsMax,

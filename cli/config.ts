@@ -27,6 +27,7 @@ export type CliOptions = {
   json: boolean;
   check: boolean;
   validateOnly: boolean;
+  rewrap: boolean;
   stage: StageId | null;
   help: boolean;
   version: boolean;
@@ -66,6 +67,7 @@ export function parseCli(argv: string[]): CliOptions {
     json: false,
     check: false,
     validateOnly: false,
+    rewrap: false,
     stage: null,
     help: false,
     version: false,
@@ -122,6 +124,9 @@ export function parseCli(argv: string[]): CliOptions {
         break;
       case '--validate-only':
         options.validateOnly = true;
+        break;
+      case '--rewrap':
+        options.rewrap = true;
         break;
       case '--stage':
         options.stage = stageValue(arg, next());

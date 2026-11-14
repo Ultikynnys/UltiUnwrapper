@@ -1,7 +1,7 @@
 import type { FaceGeometry } from './mesh';
 import { edgeLength } from './topology';
 import type { Chart, ConditionedMesh, Issue, MeshTopology, Segmentation, StageStats } from './types';
-import { computeSeams, type SeamOptions } from './seams';
+import { computeSeams, type SeamOptions, type SeamResult } from './seams';
 
 export type SegmentOptions = SeamOptions & {
   /** Maximum cut attempts per closed chart run. */
@@ -338,6 +338,79 @@ export function findClosedChartCut(
   return path;
 }
 
+/** Cuts an open disk chart between two far-apart boundary vertices. The
+ * interior path splits one large island into two without touching unrelated
+ * charts. */
+export function findChartBisection(
+  mesh: ConditionedMesh,
+  topology: MeshTopology,
+  chart: Chart,
+  seamEdge: Uint8Array,
+): number[] {
+  if (chart.closed || chart.boundaryComponents !== 1 || chart.triangles.length < 2) return [];
+  const boundaryVertices = new Set<number>();
+  for (const edgeIndex of chart.boundaryEdges) {
+    const edge = topology.edges[edgeIndex];
+    if (!edge) continue;
+    boundaryVertices.add(edge.a);
+    boundaryVertices.add(edge.b);
+  }
+  if (boundaryVertices.size < 2) return [];
+
+  const chartTriangles = new Set<number>(chart.triangles);
+  const interiorDegree = (vertex: number): number => {
+    let degree = 0;
+    for (const edgeIndex of topology.vertexEdges[vertex]) {
+      const edge = topology.edges[edgeIndex];
+      if (!edge || edge.boundary || edge.nonManifold || seamEdge[edgeIndex]) continue;
+      if (edge.triangles.length !== 2) continue;
+      if (!chartTriangles.has(edge.triangles[0]) || !chartTriangles.has(edge.triangles[1])) continue;
+      degree += 1;
+    }
+    return degree;
+  };
+  const sources = [...boundaryVertices]
+    .sort((a, b) => interiorDegree(b) - interiorDegree(a))
+    .slice(0, 12);
+
+  for (const source of sources) {
+    const first = dijkstra(mesh, topology, chartTriangles, seamEdge, source);
+    let target = -1;
+    let farthest = -1;
+    for (const vertex of boundaryVertices) {
+      if (vertex === source) continue;
+      const distance = first.distances[vertex];
+      if (!Number.isFinite(distance)) continue;
+      if (distance > farthest) {
+        farthest = distance;
+        target = vertex;
+      }
+    }
+    if (target < 0 || target === source) continue;
+
+    const second = dijkstra(mesh, topology, chartTriangles, seamEdge, target);
+    if (!Number.isFinite(second.distances[source])) continue;
+    const path: number[] = [];
+    let vertex = source;
+    while (vertex !== target) {
+      const edge = second.parentEdge[vertex];
+      const parent = second.parentVertex[vertex];
+      if (edge < 0 || parent < 0) {
+        path.length = 0;
+        break;
+      }
+      path.push(edge);
+      vertex = parent;
+      if (path.length > mesh.vertexCount) {
+        path.length = 0;
+        break;
+      }
+    }
+    if (path.length > 0) return path;
+  }
+  return [];
+}
+
 /** Connects two separate boundary loops of an open chart. The shortest
  * interior path between the loops turns an annulus-like chart into a disk. */
 export function findBoundaryCut(
@@ -414,7 +487,9 @@ export type CutResult = {
   issues: Issue[];
 };
 
-/** Cuts closed charts until they have a boundary or the retry budget runs out.
+/** Cuts charts until every one is a disk or the retry budget runs out. One
+ * round cuts every chart that still has a hole or no boundary at all, so the
+ * default budget is derived from the loop counts rather than a fixed number.
  * The returned seam mask includes every original seam plus the new cuts. */
 export function cutClosedCharts(
   mesh: ConditionedMesh,
@@ -426,10 +501,16 @@ export function cutClosedCharts(
   const working = new Uint8Array(seamEdge);
   const cutEdges: number[] = [];
   const issues: Issue[] = [];
-  const maxRounds = Math.max(1, options.maxClosedChartCuts ?? 3);
   let closedBefore = 0;
   let nonDiskBefore = 0;
   let cutLength = 0;
+
+  const initial = segmentCharts(mesh, topology, working, face);
+  let loopBudget = 8;
+  for (const chart of initial.charts) {
+    loopBudget += Math.max(0, chart.boundaryComponents - 1) + (chart.closed ? 1 : 0);
+  }
+  const maxRounds = Math.max(1, options.maxClosedChartCuts ?? loopBudget);
 
   for (let round = 0; round < maxRounds; round += 1) {
     const current = segmentCharts(mesh, topology, working, face);
@@ -478,17 +559,21 @@ export function cutClosedCharts(
   };
 }
 
-/** Full segmentation stage: seams, closed-chart cuts, and final chart stats. */
-export function segmentMesh(
+/** Builds the segmentation for an explicit seam mask. Closed charts and
+ * charts with holes are cut until they are disks, then chart stats and issues
+ * are derived from the final mask. */
+export function segmentFromSeams(
   mesh: ConditionedMesh,
   topology: MeshTopology,
   face: FaceGeometry,
+  seamEdge: Uint8Array,
   options: SegmentOptions,
+  seams?: SeamResult,
 ): Segmentation {
-  const seams = computeSeams(mesh, topology, face, options);
-  const cuts = cutClosedCharts(mesh, topology, face, seams.seamEdge, options);
+  const cuts = cutClosedCharts(mesh, topology, face, seamEdge, options);
   const finalCharts = segmentCharts(mesh, topology, cuts.seamEdge, face);
-  const issues: Issue[] = [...seams.issues, ...cuts.issues];
+  const counts = seams ?? countSeams(mesh, topology, cuts.seamEdge);
+  const issues: Issue[] = [...(seams?.issues ?? []), ...cuts.issues];
 
   let chartTrianglesMin = Infinity;
   let chartTrianglesMax = 0;
@@ -532,13 +617,14 @@ export function segmentMesh(
 
   const stats: StageStats = {
     charts: finalCharts.charts.length,
-    seamEdges: seams.interiorSeamCount + seams.nonManifoldCount + cuts.cutsAdded,
-    seamLength: Number((seams.interiorSeamLength + cuts.cutLength).toFixed(4)),
-    boundaryEdges: seams.boundaryCount,
-    nonManifoldEdges: seams.nonManifoldCount,
-    objectSeams: seams.objectSeamCount,
-    materialSeams: seams.materialSeamCount,
-    dihedralSeams: seams.dihedralSeamCount,
+    seamEdges: counts.interiorSeamCount + counts.nonManifoldCount + cuts.cutsAdded,
+    seamLength: Number((counts.interiorSeamLength + cuts.cutLength).toFixed(4)),
+    boundaryEdges: counts.boundaryCount,
+    nonManifoldEdges: counts.nonManifoldCount,
+    objectSeams: counts.objectSeamCount,
+    materialSeams: counts.materialSeamCount,
+    dihedralSeams: counts.dihedralSeamCount,
+    uvSeams: counts.uvSeamCount ?? 0,
     closedChartsBeforeCuts: cuts.closedBefore,
     nonDiskChartsBeforeCuts: cuts.nonDiskBefore,
     cutsAdded: cuts.cutsAdded,
@@ -556,4 +642,61 @@ export function segmentMesh(
     stats,
     issues,
   };
+}
+
+/** Seam counts derived from a mask alone, used when the caller supplies no
+ * precomputed seam result. Category counts that the mask cannot express stay
+ * at zero. */
+function countSeams(
+  mesh: ConditionedMesh,
+  topology: MeshTopology,
+  seamEdge: Uint8Array,
+): SeamResult {
+  let interiorSeamCount = 0;
+  let interiorSeamLength = 0;
+  let boundaryCount = 0;
+  let nonManifoldCount = 0;
+  const seamEdgeResult = new Uint8Array(topology.edges.length);
+  for (let edgeIndex = 0; edgeIndex < topology.edges.length; edgeIndex += 1) {
+    const edge = topology.edges[edgeIndex];
+    if (seamEdge[edgeIndex]) seamEdgeResult[edgeIndex] = 1;
+    if (edge.boundary) {
+      boundaryCount += 1;
+      continue;
+    }
+    if (edge.nonManifold) {
+      nonManifoldCount += 1;
+      continue;
+    }
+    if (!seamEdge[edgeIndex]) continue;
+    interiorSeamCount += 1;
+    interiorSeamLength += Math.hypot(
+      mesh.positions[edge.b * 3] - mesh.positions[edge.a * 3],
+      mesh.positions[edge.b * 3 + 1] - mesh.positions[edge.a * 3 + 1],
+      mesh.positions[edge.b * 3 + 2] - mesh.positions[edge.a * 3 + 2],
+    );
+  }
+  return {
+    seamEdge: seamEdgeResult,
+    interiorSeamCount,
+    interiorSeamLength,
+    boundaryCount,
+    nonManifoldCount,
+    objectSeamCount: 0,
+    materialSeamCount: 0,
+    dihedralSeamCount: 0,
+    uvSeamCount: 0,
+    issues: [],
+  };
+}
+
+/** Full segmentation stage: seams, closed-chart cuts, and final chart stats. */
+export function segmentMesh(
+  mesh: ConditionedMesh,
+  topology: MeshTopology,
+  face: FaceGeometry,
+  options: SegmentOptions,
+): Segmentation {
+  const seams = computeSeams(mesh, topology, face, options);
+  return segmentFromSeams(mesh, topology, face, seams.seamEdge, options, seams);
 }

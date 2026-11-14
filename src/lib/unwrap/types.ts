@@ -41,6 +41,9 @@ export type RawMesh = {
   sourceTriangle: Uint32Array;
   /** Source vertex index for each flattened vertex. */
   sourceVertex: Uint32Array;
+  /** 6 floats per triangle in source corner order, when every source mesh
+   * supplied UVs. Used to preserve artist seams before re-parameterizing. */
+  triangleUvs?: Float32Array;
   /** Human-readable object names, indexed by `objectOfTriangle`. */
   objectNames: string[];
 };
@@ -62,6 +65,8 @@ export type ConditionedMesh = {
   sourceTriangle: Uint32Array;
   /** Source vertex index of the first source vertex that mapped here. */
   sourceVertex: Uint32Array;
+  /** 6 source UV floats per retained triangle, aligned with `indices`. */
+  triangleUvs?: Float32Array;
   objectNames: string[];
   vertexCount: number;
   triangleCount: number;
@@ -121,6 +126,14 @@ export type Segmentation = {
   issues: Issue[];
 };
 
+export type ChartFailure =
+  | 'degenerate'
+  | 'not-disk'
+  | 'no-boundary-loop'
+  | 'embedding-failed'
+  | 'solve-diverged'
+  | 'folded-solution';
+
 export type ChartUv = {
   chart: number;
   /** Global triangle indices, aligned with `localIndices`. */
@@ -137,8 +150,10 @@ export type ChartUv = {
   solverIterations: number;
   solverResidual: number;
   solverConverged: boolean;
-  initialization: 'projection' | 'harmonic' | 'none';
-  fallback: boolean;
+  initialization: 'projection' | 'harmonic' | 'source' | 'none';
+  /** True when the chart could not be flattened; `failure` names the reason. */
+  failed: boolean;
+  failure: ChartFailure | null;
 };
 
 export type ParameterizeOptions = {
@@ -146,8 +161,13 @@ export type ParameterizeOptions = {
   tolerance?: number;
   /** Hard cap on conjugate-gradient iterations. */
   maxIterations?: number;
-  /** Fraction of flipped chart triangles that triggers the planar fallback. */
+  /** Largest share of flipped triangles a solve may have and still be used. */
   maxFlippedFraction?: number;
+  /** Best texel density the atlas can deliver, in pixels per world unit.
+   * Overlaps that stay below one texel at this density are ignored. */
+  texelDensity?: number;
+  /** Reuse the source UV layout instead of solving a new flattening. */
+  sourceUvs?: boolean;
 };
 
 export type ParameterizeResult = {
