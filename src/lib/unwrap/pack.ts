@@ -22,6 +22,9 @@ export type PackOptions = {
   fitIterations?: number;
   occupancyResolution?: number;
   minOccupancy?: number;
+  /** Grow every chart uniformly until the atlas is full, instead of holding
+   * the requested target density. */
+  fitToAtlas?: boolean;
 };
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -85,23 +88,98 @@ function splitFree(free: Rect[], used: Rect): Rect[] {
   return prune(next);
 }
 
-function packRectangles(items: Item[], resolution: number, padding: number, allowRotation: boolean): Placement[] | null {
+type Heuristic = 'bssf' | 'blsf' | 'baf' | 'bl';
+
+type SortMode = {
+  name: string;
+  compare: (a: Item, b: Item) => number;
+};
+
+function area(item: Item): number {
+  return item.baseW * item.baseH;
+}
+
+function maxSide(item: Item): number {
+  return Math.max(item.baseW, item.baseH);
+}
+
+function perimeter(item: Item): number {
+  return item.baseW + item.baseH;
+}
+
+const SORT_MODES: SortMode[] = [
+  {
+    name: 'area',
+    compare: (a, b) => area(b) - area(a) || maxSide(b) - maxSide(a) || a.chart - b.chart,
+  },
+  {
+    name: 'max-side',
+    compare: (a, b) => maxSide(b) - maxSide(a) || area(b) - area(a) || a.chart - b.chart,
+  },
+  {
+    name: 'perimeter',
+    compare: (a, b) => perimeter(b) - perimeter(a) || area(b) - area(a) || a.chart - b.chart,
+  },
+  {
+    name: 'height',
+    compare: (a, b) => b.baseH - a.baseH || b.baseW - a.baseW || a.chart - b.chart,
+  },
+];
+
+function scoreCandidate(
+  heuristic: Heuristic,
+  free: Rect,
+  candidate: { w: number; h: number },
+): number[] {
+  const leftW = free.w - candidate.w;
+  const leftH = free.h - candidate.h;
+  const short = Math.min(leftW, leftH);
+  const long = Math.max(leftW, leftH);
+  switch (heuristic) {
+    case 'blsf':
+      return [long, short];
+    case 'baf':
+      return [free.w * free.h - candidate.w * candidate.h, short];
+    case 'bl':
+      return [free.y + candidate.h, free.x];
+    case 'bssf':
+    default:
+      return [short, long];
+  }
+}
+
+function compareScores(a: number[], b: number[]): number {
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    const delta = (a[index] ?? 0) - (b[index] ?? 0);
+    if (delta !== 0) return delta;
+  }
+  return 0;
+}
+
+/** One MaxRects pass with a fixed sort order and free-rect heuristic. Every
+ * placement splits the intersecting maximal free rectangles, then prunes
+ * rectangles contained by another. */
+function packWith(
+  items: Item[],
+  resolution: number,
+  padding: number,
+  allowRotation: boolean,
+  heuristic: Heuristic,
+  sorter: SortMode,
+): Placement[] | null {
   const free: Rect[] = [{ x: 0, y: 0, w: resolution, h: resolution }];
-  const sorted = [...items].sort((a, b) => {
-    const areaA = a.baseW * a.baseH;
-    const areaB = b.baseW * b.baseH;
-    if (areaB !== areaA) return areaB - areaA;
-    const sideA = Math.max(a.baseW, a.baseH);
-    const sideB = Math.max(b.baseW, b.baseH);
-    if (sideB !== sideA) return sideB - sideA;
-    return a.chart - b.chart;
-  });
+  const sorted = [...items].sort(sorter.compare);
   const placements: Placement[] = [];
 
   for (const item of sorted) {
     let best: {
-      x: number; y: number; w: number; h: number; rotation: 0 | 90;
-      shortSide: number; longSide: number;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      rotation: 0 | 90;
+      score: number[];
     } | null = null;
     for (const rect of free) {
       const candidates: Array<{ w: number; h: number; rotation: 0 | 90 }> = [
@@ -116,13 +194,13 @@ function packRectangles(items: Item[], resolution: number, padding: number, allo
       }
       for (const candidate of candidates) {
         if (candidate.w > rect.w || candidate.h > rect.h) continue;
-        const shortSide = Math.min(rect.w - candidate.w, rect.h - candidate.h);
-        const longSide = Math.max(rect.w - candidate.w, rect.h - candidate.h);
+        const score = scoreCandidate(heuristic, rect, candidate);
         const better = best === null
-          || shortSide < best.shortSide
-          || (shortSide === best.shortSide && longSide < best.longSide)
-          || (shortSide === best.shortSide && longSide === best.longSide && rect.y < best.y)
-          || (shortSide === best.shortSide && longSide === best.longSide && rect.y === best.y && rect.x < best.x);
+          || compareScores(score, best.score) < 0
+          || (compareScores(score, best.score) === 0 && rect.y < best.y)
+          || (compareScores(score, best.score) === 0 && rect.y === best.y && rect.x < best.x)
+          || (compareScores(score, best.score) === 0 && rect.y === best.y && rect.x === best.x
+            && candidate.rotation === 0 && best.rotation === 90);
         if (better) {
           best = {
             x: rect.x,
@@ -130,8 +208,7 @@ function packRectangles(items: Item[], resolution: number, padding: number, allo
             w: candidate.w,
             h: candidate.h,
             rotation: candidate.rotation,
-            shortSide,
-            longSide,
+            score,
           };
         }
       }
@@ -152,6 +229,39 @@ function packRectangles(items: Item[], resolution: number, padding: number, allo
     free.push(...nextFree);
   }
   return placements;
+}
+
+function placementExtent(placements: Placement[]): { width: number; height: number; side: number } {
+  let width = 0;
+  let height = 0;
+  for (const placement of placements) {
+    width = Math.max(width, placement.x + placement.w);
+    height = Math.max(height, placement.y + placement.h);
+  }
+  return { width, height, side: Math.max(width, height) };
+}
+
+/** Tries every MaxRects heuristic and item order, keeping the layout with the
+ * smallest square footprint. Smaller footprints leave more room when the
+ * caller scales the charts up to fill the atlas. */
+function packRectangles(items: Item[], resolution: number, padding: number, allowRotation: boolean): Placement[] | null {
+  let best: Placement[] | null = null;
+  let bestExtent = { width: Infinity, height: Infinity, side: Infinity };
+  const sorters = items.length <= 64 ? SORT_MODES : [SORT_MODES[0]];
+  const heuristics: Heuristic[] = items.length <= 64 ? ['bssf', 'blsf', 'baf', 'bl'] : ['bssf'];
+  for (const sorter of sorters) {
+    for (const heuristic of heuristics) {
+      const attempt = packWith(items, resolution, padding, allowRotation, heuristic, sorter);
+      if (!attempt) continue;
+      const extent = placementExtent(attempt);
+      if (extent.side < bestExtent.side
+        || (extent.side === bestExtent.side && extent.width + extent.height < bestExtent.width + bestExtent.height)) {
+        best = attempt;
+        bestExtent = extent;
+      }
+    }
+  }
+  return best;
 }
 
 type Attempt = {
@@ -222,11 +332,41 @@ export function packAtlas(
 
   let best = attemptPack(density.charts, resolution, padding, options.allowRotation, 1);
   let bestScale = 1;
-  if (!best) {
+  const iterations = options.fitIterations ?? 18;
+  const fitToAtlas = Boolean(options.fitToAtlas) && density.charts.length <= 64;
+  if (best && fitToAtlas) {
+    let low = 1;
+    let high = 2;
+    let highAttempt = attemptPack(density.charts, resolution, padding, options.allowRotation, high);
+    let expansions = 0;
+    while (highAttempt && high < 8 && expansions < 3) {
+      low = high;
+      best = highAttempt;
+      bestScale = high;
+      high *= 2;
+      highAttempt = attemptPack(density.charts, resolution, padding, options.allowRotation, high);
+      expansions += 1;
+    }
+    if (highAttempt) {
+      best = highAttempt;
+      bestScale = high;
+    } else {
+      for (let iteration = 0; iteration < iterations; iteration += 1) {
+        const mid = (low + high) / 2;
+        const attempt = attemptPack(density.charts, resolution, padding, options.allowRotation, mid);
+        if (attempt) {
+          best = attempt;
+          bestScale = mid;
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+    }
+  } else if (!best) {
     const minimumScale = 1e-4;
     let low = minimumScale;
     let high = 1;
-    const iterations = options.fitIterations ?? 18;
     for (let iteration = 0; iteration < iterations; iteration += 1) {
       const mid = (low + high) / 2;
       const attempt = attemptPack(density.charts, resolution, padding, options.allowRotation, mid);
@@ -238,27 +378,27 @@ export function packAtlas(
         high = mid;
       }
     }
-    if (!best) {
-      issues.push({
-        stage: 'pack',
-        severity: 'error',
-        code: 'atlas-overflow',
-        message: `The charts do not fit in a ${resolution} px atlas with ${padding} px padding, even after scaling.`,
-        value: Number(bestScale.toFixed(6)),
-      });
-      return {
-        charts: [],
-        triangleUvs: emptyTriangleUvs,
-        placements: [],
-        scale: 0,
-        achievedTexelDensity: 0,
-        faceTexelDensity: emptyDensity,
-        occupancy: 0,
-        bboxOccupancy: 0,
-        stats: { atlasResolution: resolution, padding, charts: density.charts.length },
-        issues,
-      };
-    }
+  }
+  if (!best) {
+    issues.push({
+      stage: 'pack',
+      severity: 'error',
+      code: 'atlas-overflow',
+      message: `The charts do not fit in a ${resolution} px atlas with ${padding} px padding, even after scaling.`,
+      value: Number(bestScale.toFixed(6)),
+    });
+    return {
+      charts: [],
+      triangleUvs: emptyTriangleUvs,
+      placements: [],
+      scale: 0,
+      achievedTexelDensity: 0,
+      faceTexelDensity: emptyDensity,
+      occupancy: 0,
+      bboxOccupancy: 0,
+      stats: { atlasResolution: resolution, padding, charts: density.charts.length },
+      issues,
+    };
   }
   bestScale = best.scale;
   const placements: ChartPlacement[] = best.placements.map((placement) => {
@@ -374,6 +514,14 @@ export function packAtlas(
       severity: 'warn',
       code: 'density-reduced',
       message: `Atlas fit reduced texel density to ${achievedTexelDensity.toFixed(1)} px/unit.`,
+      value: Number(bestScale.toFixed(6)),
+    });
+  } else if (bestScale > 1.001) {
+    issues.push({
+      stage: 'pack',
+      severity: 'info',
+      code: 'density-increased',
+      message: `Atlas fill increased texel density to ${achievedTexelDensity.toFixed(1)} px/unit.`,
       value: Number(bestScale.toFixed(6)),
     });
   }

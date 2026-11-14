@@ -318,6 +318,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     atlasResolution: config.atlasResolution,
     padding: config.padding,
     allowRotation: config.allowRotation,
+    fitToAtlas: config.fitToAtlas,
     targetTexelDensity: config.targetTexelDensity,
     occupancyResolution: config.occupancyResolution,
     minOccupancy: config.thresholds.minOccupancy,

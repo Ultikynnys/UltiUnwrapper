@@ -17,6 +17,7 @@ export type UnwrapConfig = {
   splitByObject: boolean;
   splitByMaterial: boolean;
   allowRotation: boolean;
+  fitToAtlas: boolean;
   tolerance: number;
   maxIterations: number;
   maxFlippedFraction: number;
@@ -53,6 +54,7 @@ export const DEFAULT_CONFIG: UnwrapConfig = {
   splitByObject: true,
   splitByMaterial: false,
   allowRotation: true,
+  fitToAtlas: true,
   tolerance: 1e-10,
   maxIterations: 2000,
   maxFlippedFraction: 0,
@@ -91,6 +93,7 @@ export function validateConfig(value: unknown): string[] {
   if (!isBoolean(value.splitByObject)) errors.push('splitByObject must be a boolean.');
   if (!isBoolean(value.splitByMaterial)) errors.push('splitByMaterial must be a boolean.');
   if (!isBoolean(value.allowRotation)) errors.push('allowRotation must be a boolean.');
+  if (!isBoolean(value.fitToAtlas)) errors.push('fitToAtlas must be a boolean.');
   if (!inRange(value.tolerance, 1e-14, 1)) errors.push('tolerance must be 1e-14..1.');
   if (!inRange(value.maxIterations, 1, 100000)) errors.push('maxIterations must be 1..100000.');
   if (!inRange(value.maxFlippedFraction, 0, 1)) errors.push('maxFlippedFraction must be 0..1.');

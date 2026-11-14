@@ -168,6 +168,12 @@ export function parseCli(argv: string[]): CliOptions {
       case '--occupancy-resolution':
         options.overrides.occupancyResolution = numberValue(arg, next(), 64, 4096);
         break;
+      case '--fit-atlas':
+        options.overrides.fitToAtlas = true;
+        break;
+      case '--no-fit-atlas':
+        options.overrides.fitToAtlas = false;
+        break;
       case '--pack-rotation':
         options.overrides.allowRotation = true;
         break;
@@ -247,6 +253,8 @@ export function configHelp(): string {
   --max-iterations <n>       LSCM iteration cap [${d.maxIterations}]
   --max-flipped-fraction <f> LSCM fallback threshold [${d.maxFlippedFraction}]
   --occupancy-resolution <n> Raster occupancy resolution [${d.occupancyResolution}]
+  --fit-atlas                Grow charts to fill the atlas [on]
+  --no-fit-atlas             Hold the target texel density
   --pack-rotation            Allow 90 degree chart rotation [on]
   --no-pack-rotation         Disable chart rotation
   --split-by-object          Separate source objects into charts [on]

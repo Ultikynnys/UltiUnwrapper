@@ -135,6 +135,10 @@ export function renderShell(root: HTMLElement): void {
               <span>Rotate charts 90 deg</span>
             </label>
             <label class="toggle-control field-toggle">
+              <input type="checkbox" id="settingFitAtlas" checked />
+              <span>Fill atlas</span>
+            </label>
+            <label class="toggle-control field-toggle">
               <input type="checkbox" id="settingSplitObject" checked />
               <span>Split by object</span>
             </label>

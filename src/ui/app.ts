@@ -121,6 +121,7 @@ export class App {
   private readonly settingSeamAngle = byId<HTMLInputElement>('settingSeamAngle');
   private readonly settingDensity = byId<HTMLInputElement>('settingDensity');
   private readonly settingRotation = byId<HTMLInputElement>('settingRotation');
+  private readonly settingFitAtlas = byId<HTMLInputElement>('settingFitAtlas');
   private readonly settingSplitObject = byId<HTMLInputElement>('settingSplitObject');
   private readonly resetSettings = byId<HTMLButtonElement>('resetSettings');
   private readonly viewport: Viewport3D;
@@ -207,6 +208,7 @@ export class App {
     this.settingSeamAngle.addEventListener('input', () => this.onSettingsChanged());
     this.settingDensity.addEventListener('input', () => this.onSettingsChanged());
     this.settingRotation.addEventListener('change', () => this.onSettingsChanged());
+    this.settingFitAtlas.addEventListener('change', () => this.onSettingsChanged());
     this.settingSplitObject.addEventListener('change', () => this.onSettingsChanged());
     this.resetSettings.addEventListener('click', () => {
       this.config = { ...DEFAULT_CONFIG, thresholds: { ...DEFAULT_CONFIG.thresholds } };
@@ -447,6 +449,7 @@ export class App {
       seamAngle: number(this.settingSeamAngle, base.seamAngle, 0, 180),
       targetTexelDensity: number(this.settingDensity, base.targetTexelDensity, 1, 16384),
       allowRotation: this.settingRotation.checked,
+      fitToAtlas: this.settingFitAtlas.checked,
       splitByObject: this.settingSplitObject.checked,
     });
     this.settingsDirty = true;
@@ -459,6 +462,7 @@ export class App {
     this.settingSeamAngle.value = String(this.config.seamAngle);
     this.settingDensity.value = String(this.config.targetTexelDensity);
     this.settingRotation.checked = this.config.allowRotation;
+    this.settingFitAtlas.checked = this.config.fitToAtlas;
     this.settingSplitObject.checked = this.config.splitByObject;
   }
 

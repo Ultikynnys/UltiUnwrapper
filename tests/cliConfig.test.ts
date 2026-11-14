@@ -90,6 +90,8 @@ describe('CLI parsing', () => {
       splitByObject: true,
       splitByMaterial: false,
     });
+    expect(parseCli(['--fit-atlas']).overrides.fitToAtlas).toBe(true);
+    expect(parseCli(['--no-fit-atlas']).overrides.fitToAtlas).toBe(false);
     expect(parseCli(['--list-stages']).listStages).toBe(true);
     expect(parseCli(['--version']).version).toBe(true);
     expect(parseCli(['-h']).help).toBe(true);

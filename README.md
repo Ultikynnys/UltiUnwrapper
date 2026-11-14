@@ -79,7 +79,7 @@ Atlas resolution, padding, seam angle, target texel density, 90-degree rotation,
 | 5 | Pack | MaxRects packing with padding, optional 90-degree rotation, binary-search fit scaling | Placements, atlas UVs, occupancy, achieved density | Atlas, padding outlines, occupancy, checker |
 | 6 | Validate | Interior raster overlap, percentile metrics, weakness ranking, pass/warn/error | Overlap mask, ranked weaknesses, summary | Overlap mask, weakness list, click-to-isolate |
 
-Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target when possible. Stage 5 may reduce all charts uniformly when the target does not fit and reports the achieved density.
+Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target when possible. Stage 5 may reduce all charts uniformly when the target does not fit and reports the achieved density. With `fitToAtlas` enabled it instead grows every chart uniformly until the atlas is full, and reports the resulting higher density. The packer runs MaxRects with four free-rectangle heuristics, four item orders, and optional 90-degree rotation, then keeps the layout with the smallest footprint.
 
 A closed chart cannot be flattened as a disk. Stage 2 finds a geodesic cut path, marks it as a seam, and resegments. The cut is shown in pink and counted in `cutsAdded`.
 
@@ -107,6 +107,7 @@ Common flags:
 | `--validate-only` | Run every stage but skip mesh export |
 | `--rewrap` | Ignore input UVs and generate new seams |
 | `--atlas`, `--padding`, `--seam-angle`, `--texel-density` | Core layout settings |
+| `--fit-atlas`, `--no-fit-atlas` | Grow charts to fill the atlas, or hold the target density |
 | `--preset <file>` | Load an unwrap preset |
 | `--dump-config [<file>]` | Write resolved settings and exit |
 | `--json` | Print a machine-readable summary |

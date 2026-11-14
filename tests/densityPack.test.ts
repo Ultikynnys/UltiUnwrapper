@@ -138,6 +138,16 @@ describe('atlas packing', () => {
     }
   });
 
+  it('grows every chart uniformly when filling the atlas', () => {
+    const { pack } = run(makeCube(2), {}, { fitToAtlas: true });
+    expect(pack.scale).toBeGreaterThan(1);
+    expect(pack.achievedTexelDensity).toBeGreaterThan(256);
+    expect(pack.occupancy).toBeGreaterThan(0.5);
+    expect(pack.issues.some((issue) => issue.code === 'density-increased')).toBe(true);
+    const original = run(makeCube(2));
+    expect(pack.achievedTexelDensity).toBeGreaterThan(original.pack.achievedTexelDensity);
+  });
+
   it('reduces density uniformly when the target does not fit', () => {
     const { pack } = run(makeCube(2), { targetTexelDensity: 512 }, { targetTexelDensity: 512 });
     expect(pack.scale).toBeLessThan(0.9);
