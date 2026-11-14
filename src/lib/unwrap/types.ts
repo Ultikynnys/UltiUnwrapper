@@ -160,3 +160,40 @@ export type ParameterizeResult = {
   stats: StageStats;
   issues: Issue[];
 };
+
+export type DensityOptions = {
+  /** Atlas edge length in texels. */
+  atlasResolution: number;
+  /** Target texel density in pixels per world unit. */
+  targetTexelDensity: number;
+  minChartScale?: number;
+  maxChartScale?: number;
+};
+
+export type DensityResult = {
+  charts: ChartUv[];
+  /** 6 floats per global triangle in atlas-fraction UV units. */
+  triangleUvs: Float32Array;
+  /** Per-face texel density in pixels per world unit. */
+  faceTexelDensity: Float32Array;
+  /** Per-face density divided by the target. */
+  densityRatio: Float32Array;
+  /** Per-chart normalization scale, indexed by chart id. */
+  chartScales: Float32Array;
+  stats: StageStats;
+  issues: Issue[];
+};
+
+export type ChartPlacement = {
+  chart: number;
+  /** Inner chart rectangle in atlas texels, bottom-left origin. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: 0 | 90;
+};
+
+export type PackedChart = ChartUv & {
+  placement: ChartPlacement;
+};
