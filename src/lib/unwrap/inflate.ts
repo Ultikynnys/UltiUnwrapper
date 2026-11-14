@@ -16,9 +16,30 @@ import type {
 
 const EPSILON = 1e-12;
 
+function angleAt(
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+  cx: number, cy: number, cz: number,
+): number {
+  const ux = bx - ax;
+  const uy = by - ay;
+  const uz = bz - az;
+  const vx = cx - ax;
+  const vy = cy - ay;
+  const vz = cz - az;
+  const uLength = Math.hypot(ux, uy, uz);
+  const vLength = Math.hypot(vx, vy, vz);
+  if (uLength <= EPSILON || vLength <= EPSILON) return 0;
+  const cosine = (ux * vx + uy * vy + uz * vz) / (uLength * vLength);
+  return (Math.acos(Math.min(1, Math.max(-1, cosine))) * 180) / Math.PI;
+}
+
 type InflatePass = {
   uvs: Float32Array;
   iterations: number;
+  smoothingPasses: number;
+  angleBefore: number;
+  angleAfter: number;
   maxFactor: number;
   attempted: boolean;
 };
@@ -28,6 +49,7 @@ type InflatePass = {
  * or increasing the maximum density, and passes repeat until no triangle can
  * grow. */
 function inflateChart(
+  mesh: ConditionedMesh,
   chart: ChartUv,
   face: FaceGeometry,
   resolution: number,
@@ -37,7 +59,7 @@ function inflateChart(
 ): InflatePass {
   const count = chart.localVertex.length;
   if (count === 0 || reference <= 0) {
-    return { uvs: chart.uvs, iterations: 0, maxFactor: 1, attempted: false };
+    return { uvs: chart.uvs, iterations: 0, smoothingPasses: 0, angleBefore: 0, angleAfter: 0, maxFactor: 1, attempted: false };
   }
   const initialSigns = new Int8Array(chart.triangles.length);
   for (let local = 0; local < chart.triangles.length; local += 1) {
@@ -135,7 +157,125 @@ function inflateChart(
     }
     if (accepted === 0) break;
   }
-  return { uvs, iterations, maxFactor, attempted };
+
+  const worldAngles = new Float32Array(chart.triangles.length * 3);
+  for (let local = 0; local < chart.triangles.length; local += 1) {
+    const triangle = chart.triangles[local];
+    const ia = mesh.indices[triangle * 3];
+    const ib = mesh.indices[triangle * 3 + 1];
+    const ic = mesh.indices[triangle * 3 + 2];
+    const ax = mesh.positions[ia * 3];
+    const ay = mesh.positions[ia * 3 + 1];
+    const az = mesh.positions[ia * 3 + 2];
+    const bx = mesh.positions[ib * 3];
+    const by = mesh.positions[ib * 3 + 1];
+    const bz = mesh.positions[ib * 3 + 2];
+    const cx = mesh.positions[ic * 3];
+    const cy = mesh.positions[ic * 3 + 1];
+    const cz = mesh.positions[ic * 3 + 2];
+    worldAngles[local * 3] = angleAt(ax, ay, az, bx, by, bz, cx, cy, cz);
+    worldAngles[local * 3 + 1] = angleAt(bx, by, bz, cx, cy, cz, ax, ay, az);
+    worldAngles[local * 3 + 2] = 180 - worldAngles[local * 3] - worldAngles[local * 3 + 1];
+  }
+  const uvAngleScore = (candidate: Float32Array): number => {
+    let total = 0;
+    let count = 0;
+    for (let local = 0; local < chart.triangles.length; local += 1) {
+      const a = chart.localIndices[local * 3] * 2;
+      const b = chart.localIndices[local * 3 + 1] * 2;
+      const c = chart.localIndices[local * 3 + 2] * 2;
+      const ua = angleAt(candidate[a], candidate[a + 1], 0, candidate[b], candidate[b + 1], 0, candidate[c], candidate[c + 1], 0);
+      const ub = angleAt(candidate[b], candidate[b + 1], 0, candidate[c], candidate[c + 1], 0, candidate[a], candidate[a + 1], 0);
+      const uc = 180 - ua - ub;
+      total += Math.abs(ua - worldAngles[local * 3])
+        + Math.abs(ub - worldAngles[local * 3 + 1])
+        + Math.abs(uc - worldAngles[local * 3 + 2]);
+      count += 3;
+    }
+    return count > 0 ? total / count : 0;
+  };
+  const adjacency: number[][] = Array.from({ length: count }, () => []);
+  for (let local = 0; local < chart.triangles.length; local += 1) {
+    const a = chart.localIndices[local * 3];
+    const b = chart.localIndices[local * 3 + 1];
+    const c = chart.localIndices[local * 3 + 2];
+    adjacency[a].push(b, c);
+    adjacency[b].push(a, c);
+    adjacency[c].push(a, b);
+  }
+  const angleBefore = uvAngleScore(uvs);
+  let smoothingPasses = 0;
+  let angleAfter = angleBefore;
+  for (let smoothPass = 0; smoothPass < 20; smoothPass += 1) {
+    const next = new Float32Array(uvs);
+    for (let vertex = 0; vertex < count; vertex += 1) {
+      const neighbors = adjacency[vertex];
+      if (neighbors.length === 0) continue;
+      let sumU = 0;
+      let sumV = 0;
+      for (const neighbor of neighbors) {
+        sumU += uvs[neighbor * 2];
+        sumV += uvs[neighbor * 2 + 1];
+      }
+      next[vertex * 2] = uvs[vertex * 2] * 0.8 + (sumU / neighbors.length) * 0.2;
+      next[vertex * 2 + 1] = uvs[vertex * 2 + 1] * 0.8 + (sumV / neighbors.length) * 0.2;
+    }
+    let nextArea = 0;
+    for (let local = 0; local < chart.triangles.length; local += 1) {
+      const a = chart.localIndices[local * 3] * 2;
+      const b = chart.localIndices[local * 3 + 1] * 2;
+      const c = chart.localIndices[local * 3 + 2] * 2;
+      nextArea += Math.abs(signedTriangleArea2D(
+        next[a], next[a + 1],
+        next[b], next[b + 1],
+        next[c], next[c + 1],
+      ));
+    }
+    let currentArea = 0;
+    for (let local = 0; local < chart.triangles.length; local += 1) {
+      const a = chart.localIndices[local * 3] * 2;
+      const b = chart.localIndices[local * 3 + 1] * 2;
+      const c = chart.localIndices[local * 3 + 2] * 2;
+      currentArea += Math.abs(signedTriangleArea2D(
+        uvs[a], uvs[a + 1],
+        uvs[b], uvs[b + 1],
+        uvs[c], uvs[c + 1],
+      ));
+    }
+    if (!(nextArea > EPSILON) || !(currentArea > EPSILON)) break;
+    const areaScale = Math.sqrt(currentArea / nextArea);
+    if (Math.abs(areaScale - 1) > 1e-6) {
+      const centerU = (chart.bbox.minU + chart.bbox.maxU) / 2;
+      const centerV = (chart.bbox.minV + chart.bbox.maxV) / 2;
+      for (let vertex = 0; vertex < count; vertex += 1) {
+        next[vertex * 2] = centerU + (next[vertex * 2] - centerU) * areaScale;
+        next[vertex * 2 + 1] = centerV + (next[vertex * 2 + 1] - centerV) * areaScale;
+      }
+    }
+    const nextScore = uvAngleScore(next);
+    if (!(nextScore < angleAfter - 1e-6)) break;
+    let valid = true;
+    for (let local = 0; local < chart.triangles.length; local += 1) {
+      const a = chart.localIndices[local * 3] * 2;
+      const b = chart.localIndices[local * 3 + 1] * 2;
+      const c = chart.localIndices[local * 3 + 2] * 2;
+      const area = signedTriangleArea2D(
+        next[a], next[a + 1],
+        next[b], next[b + 1],
+        next[c], next[c + 1],
+      );
+      const sign = area > EPSILON ? 1 : area < -EPSILON ? -1 : 0;
+      if (initialSigns[local] !== 0 && sign !== initialSigns[local]) {
+        valid = false;
+        break;
+      }
+    }
+    if (!valid) break;
+    uvs = next;
+    angleAfter = nextScore;
+    smoothingPasses += 1;
+  }
+  return { uvs, iterations, smoothingPasses, angleBefore, angleAfter, maxFactor, attempted };
 }
 
 /** Inflation-only density pass. It runs after chart normalization and never
@@ -191,10 +331,20 @@ export function inflateDensity(
   let inflatedCharts = 0;
   let attemptedCharts = 0;
   let inflationIterations = 0;
+  let smoothingPasses = 0;
+  let angleBefore = 0;
+  let angleAfter = 0;
+  let angleCharts = 0;
   let maxInflationApplied = 1;
   for (const chart of charts) {
-    const inflated = inflateChart(chart, face, resolution, referenceDensity, maxInflation, maxIterations);
+    const inflated = inflateChart(mesh, chart, face, resolution, referenceDensity, maxInflation, maxIterations);
     if (inflated.attempted) attemptedCharts += 1;
+    if (inflated.smoothingPasses > 0) {
+      angleBefore += inflated.angleBefore;
+      angleAfter += inflated.angleAfter;
+      angleCharts += 1;
+      smoothingPasses = Math.max(smoothingPasses, inflated.smoothingPasses);
+    }
     if (inflated.iterations === 0) continue;
     let area = 0;
     let minU = Infinity;
@@ -305,6 +455,9 @@ export function inflateDensity(
     inflatedFaces,
     inflatedVertices,
     inflationIterations,
+    smoothingPasses,
+    angleMeanBefore: Number((angleCharts > 0 ? angleBefore / angleCharts : 0).toFixed(4)),
+    angleMeanAfter: Number((angleCharts > 0 ? angleAfter / angleCharts : 0).toFixed(4)),
     maxInflation: Number(maxInflationApplied.toFixed(4)),
     uvAreaFraction: Number(uvAreaFraction.toFixed(6)),
   };

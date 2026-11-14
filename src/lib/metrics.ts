@@ -80,7 +80,8 @@ export function stageCards(stage: StageSnapshot): MetricCard[] {
         { label: 'Before spread', value: percent(stage.stats.densityBeforeSpread, 2) },
         { label: 'After spread', value: percent(stage.stats.densityAfterSpread, 2) },
         { label: 'Inflated faces', value: count(stage.stats.inflatedFaces), hint: `${count(stage.stats.inflatedVertices)} verts` },
-        { label: 'Steps', value: count(stage.stats.inflationIterations), hint: 'triangle scales' },
+        { label: 'Smoothing', value: count(stage.stats.smoothingPasses), hint: 'distortion passes' },
+        { label: 'Angle', value: `${fixed(stage.stats.angleMeanAfter, 2)} deg`, hint: `was ${fixed(stage.stats.angleMeanBefore, 2)}` },
       ];
     case 'pack':
       return [

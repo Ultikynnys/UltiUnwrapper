@@ -46,6 +46,9 @@ describe('stage headlines', () => {
       inflatedVertices: 120,
       attemptedCharts: 4,
       inflationIterations: 3,
+      smoothingPasses: 5,
+      angleMeanBefore: 4,
+      angleMeanAfter: 2.5,
       densityAfterSpread: 0.12,
       uvAreaFraction: 0.5,
     }));
@@ -53,12 +56,15 @@ describe('stage headlines', () => {
       'Before spread',
       'After spread',
       'Inflated faces',
-      'Steps',
+      'Smoothing',
+      'Angle',
     ]);
     expect(cards[0].value).toBe('-');
     expect(cards[1].value).toBe('12.00%');
     expect(cards[2].value).toBe('48');
     expect(cards[2].hint).toBe('120 verts');
+    expect(cards[3].value).toBe('5');
+    expect(cards[4].value).toBe('2.50 deg');
   });
 
   it('builds the validate cards from the final metrics', () => {
