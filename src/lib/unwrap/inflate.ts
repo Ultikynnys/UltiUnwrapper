@@ -214,8 +214,8 @@ function inflateChart(
         const cy = (uvs[a + 1] + uvs[b + 1] + uvs[c + 1]) / 3;
         const trial = new Float32Array(uvs);
         for (const vertex of vertices) {
-          trial[vertex * 2] = uvs[vertex * 2] + (uvs[vertex * 2] - cx) * (factor - 1) * 0.5;
-          trial[vertex * 2 + 1] = uvs[vertex * 2 + 1] + (uvs[vertex * 2 + 1] - cy) * (factor - 1) * 0.5;
+          trial[vertex * 2] = uvs[vertex * 2] + (uvs[vertex * 2] - cx) * (factor - 1) * 0.1;
+          trial[vertex * 2 + 1] = uvs[vertex * 2 + 1] + (uvs[vertex * 2 + 1] - cy) * (factor - 1) * 0.1;
         }
         let valid = true;
         let trialArea = 0;

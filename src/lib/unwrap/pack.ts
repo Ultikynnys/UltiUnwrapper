@@ -438,38 +438,47 @@ export function packAtlas(
       bestScale = concave.scale;
     }
   }
-  if (!best) {
-    best = attemptPack(density.charts, resolution, padding, options.allowRotation, 1);
-    if (best && fitToAtlas) {
-      let low = 1;
-      let high = 2;
-      let highAttempt = attemptPack(density.charts, resolution, padding, options.allowRotation, high);
-      let expansions = 0;
-      while (highAttempt && high < 8 && expansions < 3) {
-        low = high;
-        best = highAttempt;
-        bestScale = high;
-        high *= 2;
-        highAttempt = attemptPack(density.charts, resolution, padding, options.allowRotation, high);
-        expansions += 1;
-      }
-      if (highAttempt) {
-        best = highAttempt;
-        bestScale = high;
-      } else {
-        for (let iteration = 0; iteration < iterations; iteration += 1) {
-          const mid = (low + high) / 2;
-          const attempt = attemptPack(density.charts, resolution, padding, options.allowRotation, mid);
-          if (attempt) {
-            best = attempt;
-            bestScale = mid;
-            low = mid;
-          } else {
-            high = mid;
-          }
+  const fitRects = (): Attempt | null => {
+    let rect = attemptPack(density.charts, resolution, padding, options.allowRotation, 1);
+    if (!rect) return null;
+    if (!fitToAtlas) return rect;
+    let low = 1;
+    let high = 2;
+    let highAttempt = attemptPack(density.charts, resolution, padding, options.allowRotation, high);
+    let expansions = 0;
+    while (highAttempt && high < 8 && expansions < 3) {
+      low = high;
+      rect = highAttempt;
+      high *= 2;
+      highAttempt = attemptPack(density.charts, resolution, padding, options.allowRotation, high);
+      expansions += 1;
+    }
+    if (highAttempt) {
+      rect = highAttempt;
+    } else {
+      for (let iteration = 0; iteration < iterations; iteration += 1) {
+        const mid = (low + high) / 2;
+        const attempt = attemptPack(density.charts, resolution, padding, options.allowRotation, mid);
+        if (attempt) {
+          rect = attempt;
+          low = mid;
+        } else {
+          high = mid;
         }
       }
-    } else if (!best) {
+    }
+    return rect;
+  };
+  if (best && fitToAtlas) {
+    const rect = fitRects();
+    if (rect && rect.scale > best.scale + 1e-6) {
+      best = rect;
+      bestScale = rect.scale;
+    }
+  }
+  if (!best) {
+    best = fitRects();
+    if (!best) {
       const minimumScale = 1e-4;
       let low = minimumScale;
       let high = 1;
