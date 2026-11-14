@@ -5,7 +5,14 @@ https://github.com/Ultikynnys/UltiPixelizer
 Copyright (c) 2026 Ultikynnys
 Licensed under the MIT License.
 
-The derived portions are the model intake and viewport patterns, the UV
-stretch and texel density math, the UV coverage rasterizer, the CLI host
-split, the Tauri CLI bridge, and the git-count versioning scripts. See the
-source headers for the specific files.
+Derived portions include the model intake and viewport patterns
+(`src/lib/modelFiles.ts`, `src/lib/modelLoad.ts`, `src/lib/modelAxis.ts`,
+`src/lib/threeGeometry.ts`, `src/lib/viewport3d.ts`), the UV stretch and texel
+density math (`src/lib/unwrap/metrics.ts`, `src/lib/unwrap/density.ts`), the UV
+coverage rasterizer (`src/lib/unwrap/raster.ts`), the CLI host split
+(`cli/`, `src/cli/`), the Tauri CLI bridge (`src-tauri/src/cli.rs`), and the
+git-count versioning scripts (`scripts/build-version.mjs`,
+`scripts/write-tauri-version.mjs`).
+
+The unwrap pipeline itself is an UltiUnwrapper implementation so each stage
+can be inspected independently.

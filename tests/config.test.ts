@@ -22,6 +22,26 @@ describe('unwrap config', () => {
     expect(validateConfig({ ...DEFAULT_CONFIG, seamAngle: 200 }).some((error) => error.includes('seamAngle'))).toBe(true);
   });
 
+  it('rejects non-objects and every invalid threshold', () => {
+    expect(validateConfig(null)).toEqual(['Config must be a JSON object.']);
+    expect(validateConfig([])).toEqual(['Config must be a JSON object.']);
+    const errors = validateConfig({
+      ...DEFAULT_CONFIG,
+      thresholds: {
+        maxOverlapFraction: -1,
+        maxAngleP95: 181,
+        maxDensitySpread: 101,
+        maxFlipped: -1,
+        minOccupancy: 2,
+      },
+    });
+    expect(errors).toContain('maxOverlapFraction must be 0..1.');
+    expect(errors).toContain('maxAngleP95 must be 0..180.');
+    expect(errors).toContain('maxDensitySpread must be 0..100.');
+    expect(errors).toContain('maxFlipped must be non-negative.');
+    expect(errors).toContain('minOccupancy must be 0..1.');
+  });
+
   it('merges overrides without losing the threshold block', () => {
     const merged = mergeConfig(DEFAULT_CONFIG, {
       padding: 4,

@@ -8,6 +8,7 @@ import { ImageLoader, Object3D, Texture } from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { upAxisRotation } from '../src/lib/modelAxis';
 import { cliHost } from './host';
 import { extname } from './path';
 
@@ -39,14 +40,17 @@ export async function loadModel(path: string): Promise<Object3D> {
   const baseDir = path.replace(/\\/g, '/').replace(/[^/]*$/, '');
   stubTextureLoading();
 
+  let scene: Object3D;
   switch (extension) {
     case 'fbx':
-      return new FBXLoader().parse(toArrayBuffer(bytes), baseDir);
+      scene = new FBXLoader().parse(toArrayBuffer(bytes), baseDir);
+      break;
     case 'obj':
-      return new OBJLoader().parse(new TextDecoder().decode(bytes));
+      scene = new OBJLoader().parse(new TextDecoder().decode(bytes));
+      break;
     case 'glb':
     case 'gltf':
-      return await new Promise<Object3D>((resolve, reject) => {
+      scene = await new Promise<Object3D>((resolve, reject) => {
         new GLTFLoader().parse(
           toArrayBuffer(bytes),
           baseDir,
@@ -54,9 +58,15 @@ export async function loadModel(path: string): Promise<Object3D> {
           reject,
         );
       });
+      break;
     case 'usdz':
       throw new Error('USDZ models need a WASM reader that the headless CLI does not bundle. Convert to GLB/FBX.');
     default:
       throw new Error(`Unsupported model format ".${extension}". Supported: fbx, obj, gltf, glb.`);
   }
+  if (extension === 'fbx' || extension === 'obj') {
+    scene.rotation.set(upAxisRotation('blender'), 0, 0);
+  }
+  scene.updateMatrixWorld(true);
+  return scene;
 }

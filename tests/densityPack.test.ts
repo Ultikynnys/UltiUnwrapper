@@ -6,7 +6,7 @@ import { parameterizeMesh } from '../src/lib/unwrap/parameterize';
 import { normalizeDensity } from '../src/lib/unwrap/density';
 import { packAtlas, type PackOptions } from '../src/lib/unwrap/pack';
 import type { ChartPlacement, DensityOptions, RawMesh } from '../src/lib/unwrap/types';
-import { makeCube, makeCylinder } from './helpers/meshes';
+import { makeCube, makeCylinder, rawMesh } from './helpers/meshes';
 
 const densityDefaults: DensityOptions = {
   atlasResolution: 2048,
@@ -40,6 +40,17 @@ function run(raw: RawMesh, densityOptions: Partial<DensityOptions> = {}, packOpt
   };
   const pack = packAtlas(mesh, density, face, packOptionsResolved);
   return { mesh, topology, face, segmentation, parameterization, density, pack };
+}
+
+function makeDisconnectedTriangles(count: number): RawMesh {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const base = positions.length / 3;
+    positions.push(index * 3, 0, 0, index * 3 + 1, 0, 0, index * 3, 1, 0);
+    indices.push(base, base + 1, base + 2);
+  }
+  return rawMesh(positions, indices);
 }
 
 function overlaps(a: ChartPlacement, b: ChartPlacement): boolean {
@@ -84,6 +95,19 @@ describe('texel density normalization', () => {
     for (const chart of density.charts) {
       expect(chart.uvArea).toBeGreaterThan(0);
     }
+  });
+
+  it('reports a non-positive atlas or target', () => {
+    const { density } = run(makeCube(2), { atlasResolution: 0, targetTexelDensity: 0 });
+    expect(density.issues.some((issue) => issue.code === 'invalid-density')).toBe(true);
+    expect(density.stats.targetDensity).toBe(0);
+  });
+
+  it('reports chart scales clamped by the density limits', () => {
+    const { density } = run(makeCube(2), { minChartScale: 1 });
+    expect(density.issues.some((issue) => issue.code === 'density-clamped')).toBe(true);
+    expect(density.stats.clampedCharts).toBe(6);
+    expect(density.stats.scaleMin).toBe(1);
   });
 });
 
@@ -142,5 +166,21 @@ describe('atlas packing', () => {
     const { pack } = run(makeCube(2), { atlasResolution: 64 }, { atlasResolution: 64, padding: 32 });
     expect(pack.placements).toHaveLength(0);
     expect(pack.issues.some((issue) => issue.code === 'padding-exceeds-atlas')).toBe(true);
+  });
+
+  it('warns when a valid layout still has low occupancy', () => {
+    const { pack } = run(makeCube(2), {}, { minOccupancy: 0.99 });
+    expect(pack.placements).toHaveLength(6);
+    expect(pack.issues.some((issue) => issue.code === 'low-occupancy')).toBe(true);
+  });
+
+  it('reports atlas overflow when even the smallest scale cannot fit', () => {
+    const { pack } = run(
+      makeDisconnectedTriangles(20),
+      { atlasResolution: 16 },
+      { atlasResolution: 16, padding: 4 },
+    );
+    expect(pack.placements).toHaveLength(0);
+    expect(pack.issues.some((issue) => issue.code === 'atlas-overflow')).toBe(true);
   });
 });

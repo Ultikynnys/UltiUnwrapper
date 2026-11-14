@@ -81,6 +81,46 @@ describe('conjugate gradient', () => {
     expect(result.x[1]).toBeCloseTo(7 / 11, 9);
     expect(result.iterations).toBeGreaterThan(0);
   });
+
+  it('handles zero right-hand sides and rejected singular systems', () => {
+    const system = {
+      size: 2,
+      diagonal: Float64Array.from([1, 1]),
+      apply(x: Float64Array, out: Float64Array) {
+        out[0] = x[0];
+        out[1] = x[1];
+      },
+    };
+    const zero = solveConjugateGradient(
+      system,
+      Float64Array.from([0, 0]),
+      Float64Array.from([1, 2]),
+      { tolerance: 1e-12, maxIterations: 10 },
+    );
+    expect(zero.converged).toBe(true);
+    expect(zero.iterations).toBe(0);
+    expect(() => solveConjugateGradient(
+      system,
+      Float64Array.from([1]),
+      Float64Array.from([1, 2]),
+      { tolerance: 1e-12, maxIterations: 10 },
+    )).toThrow(/do not match/);
+    const broken = solveConjugateGradient(
+      {
+        size: 2,
+        diagonal: Float64Array.from([1, 1]),
+        apply(x: Float64Array, out: Float64Array) {
+          out[0] = Number.NaN;
+          out[1] = x[1];
+        },
+      },
+      Float64Array.from([1, 1]),
+      Float64Array.from([0, 0]),
+      { tolerance: 1e-12, maxIterations: 5 },
+    );
+    expect(broken.converged).toBe(false);
+    expect(broken.residual).toBe(Infinity);
+  });
 });
 
 describe('LSCM', () => {
@@ -161,5 +201,16 @@ describe('parameterization', () => {
     const second = parameterize(makeCylinder(16, 1, 2)).result;
     expect(Array.from(second.triangleUvs)).toEqual(Array.from(first.triangleUvs));
     expect(second.stats.angleP95).toBe(first.stats.angleP95);
+  });
+
+  it('selects pins for charts larger than the exhaustive threshold', () => {
+    const { result } = parameterize(makeCylinder(140, 1, 2));
+    const side = result.charts.reduce((largest, chart) => (
+      chart.triangles.length > largest.triangles.length ? chart : largest
+    ));
+    expect(side.localVertex.length).toBeGreaterThan(256);
+    expect(side.fallback).toBe(false);
+    expect(side.solverIterations).toBeGreaterThan(0);
+    expect(Array.from(result.triangleUvs).every((value) => Number.isFinite(value))).toBe(true);
   });
 });

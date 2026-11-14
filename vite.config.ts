@@ -1,5 +1,24 @@
-import { defineConfig } from 'vitest/config';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vitest/config';
+
+function gitValue(args: string[], fallback: string): string {
+  try {
+    return execFileSync('git', args, { encoding: 'utf8' }).trim() || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const versionScript = fileURLToPath(new URL('./scripts/build-version.mjs', import.meta.url));
+let buildVersion = '0.1.0';
+try {
+  buildVersion = execFileSync(process.execPath, [versionScript], { encoding: 'utf8' }).trim();
+} catch {
+  // A source tarball without git history still gets a usable version.
+}
+process.env.VITE_BUILD_VERSION ??= buildVersion;
+process.env.VITE_COMMIT_SHA ??= gitValue(['rev-parse', '--short', 'HEAD'], 'LOCAL');
 
 export default defineConfig({
   base: './',

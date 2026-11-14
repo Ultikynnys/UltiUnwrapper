@@ -46,6 +46,36 @@ describe('validation', () => {
     expect(result.validation.weaknesses.some((weakness) => weakness.kind === 'density')).toBe(true);
   });
 
+  it('warns about weak charts without failing the numeric thresholds', () => {
+    const config = mergeConfig(DEFAULT_CONFIG, {
+      targetTexelDensity: 512,
+      thresholds: {
+        maxOverlapFraction: 1,
+        maxAngleP95: 180,
+        maxDensitySpread: 100,
+        maxFlipped: 1_000_000,
+        minOccupancy: 0,
+      },
+    });
+    const result = runUnwrap(makeSphere(12, 6, 1), config);
+    expect(result.validation.topWeaknesses.some((weakness) => weakness.kind === 'area')).toBe(true);
+    expect(result.validation.issues.some((issue) => issue.code === 'weak-charts')).toBe(true);
+    expect(result.validation.status).toBe('warn');
+  });
+
+  it('falls back to a 2048 atlas when pack stats omit the resolution', () => {
+    const result = runUnwrap(makeCube(2), DEFAULT_CONFIG);
+    const stats = { ...result.pack.stats };
+    delete stats.atlasResolution;
+    const validation = validateUnwrap(
+      result.mesh,
+      result.parameterization,
+      { ...result.pack, stats },
+      options,
+    );
+    expect(validation.stats.validationResolution).toBe(512);
+  });
+
   it('fails overlapping UVs', () => {
     const result = runUnwrap(makeCube(2), DEFAULT_CONFIG);
     const triangleUvs = new Float32Array(result.pack.triangleUvs.length);

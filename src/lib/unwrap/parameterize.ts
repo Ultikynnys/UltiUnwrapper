@@ -1,6 +1,7 @@
 import { solveLscm, type LscmTriangle } from './lscm';
 import { computeFaceMetrics, signedTriangleArea2D, summarize } from './metrics';
 import { solveConjugateGradient } from './solver';
+import { mirrorU } from './uvMath';
 import type { FaceGeometry } from './mesh';
 import type {
   Chart,
@@ -401,15 +402,6 @@ function countFlipped(uvs: Float32Array, localIndices: Uint32Array): number {
     }
   }
   return flipped;
-}
-
-function mirrorU(uvs: Float32Array): Float32Array {
-  const mirrored = new Float32Array(uvs.length);
-  for (let vertex = 0; vertex < uvs.length / 2; vertex += 1) {
-    mirrored[vertex * 2] = -uvs[vertex * 2];
-    mirrored[vertex * 2 + 1] = uvs[vertex * 2 + 1];
-  }
-  return mirrored;
 }
 
 /** Orders the chart's boundary as a single loop of chart-local vertices. Each

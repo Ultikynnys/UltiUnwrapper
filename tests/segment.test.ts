@@ -19,6 +19,17 @@ const defaults: SegmentOptions = {
   splitByMaterial: false,
 };
 
+function makeDisconnectedTriangles(count: number): RawMesh {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const base = positions.length / 3;
+    positions.push(index * 3, 0, 0, index * 3 + 1, 0, 0, index * 3, 1, 0);
+    indices.push(base, base + 1, base + 2);
+  }
+  return rawMesh(positions, indices);
+}
+
 function segment(raw: RawMesh, options: Partial<SegmentOptions> = {}) {
   const { mesh } = conditionMesh(raw);
   const topology = buildTopology(mesh);
@@ -130,5 +141,20 @@ describe('chart segmentation', () => {
     expect(second.charts.map((chart) => Array.from(chart.triangles)))
       .toEqual(first.charts.map((chart) => Array.from(chart.triangles)));
     expect(Array.from(second.chartOfTriangle)).toEqual(Array.from(first.chartOfTriangle));
+  });
+
+  it('warns when the mesh produces too many charts', () => {
+    const { result } = segment(makeDisconnectedTriangles(513));
+    expect(result.charts).toHaveLength(513);
+    expect(result.issues.some((issue) => issue.code === 'many-charts')).toBe(true);
+  });
+
+  it('reports no charts for an empty mesh', () => {
+    const { mesh } = conditionMesh(rawMesh([], []));
+    const topology = buildTopology(mesh);
+    const face = computeFaceGeometry(mesh);
+    const result = segmentMesh(mesh, topology, face, defaults);
+    expect(result.charts).toHaveLength(0);
+    expect(result.issues.some((issue) => issue.code === 'no-charts')).toBe(true);
   });
 });
