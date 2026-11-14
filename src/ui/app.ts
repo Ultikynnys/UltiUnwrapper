@@ -66,6 +66,39 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+type SummaryFinding = {
+  severity: 'warn' | 'error';
+  message: string;
+};
+
+function summaryFindings(result: UnwrapResult): SummaryFinding[] {
+  const findings: SummaryFinding[] = [];
+  for (const issue of result.validation.issues) {
+    if (issue.severity === 'error' || issue.severity === 'warn') {
+      findings.push({ severity: issue.severity, message: issue.message });
+    }
+  }
+  if (findings.length === 0) {
+    for (const stage of result.stages) {
+      for (const issue of stage.issues) {
+        if (issue.severity === 'error' || issue.severity === 'warn') {
+          findings.push({ severity: issue.severity, message: issue.message });
+        }
+      }
+    }
+  }
+  if (!findings.some((finding) => finding.severity === 'error')) {
+    for (const weakness of result.validation.topWeaknesses) {
+      if (weakness.severity === 'error') {
+        findings.push({ severity: 'error', message: weakness.message });
+      }
+    }
+  }
+  return findings.sort((a, b) => (
+    a.severity === b.severity ? 0 : a.severity === 'error' ? -1 : 1
+  ));
+}
+
 function weaknessValue(kind: WeaknessKind, value: number): string {
   if (!Number.isFinite(value)) return '-';
   switch (kind) {
@@ -397,7 +430,11 @@ export class App {
     const status = result.validation.status;
     const kind = status === 'pass' ? 'info' : status === 'warn' ? 'warn' : 'error';
     const charts = Number(result.validation.stats.charts ?? result.pack.charts.length);
-    this.showToast(`Unwrap ${status}. ${charts} ${charts === 1 ? 'chart' : 'charts'} ready.`, kind);
+    const findings = summaryFindings(result);
+    const finding = findings.find((item) => item.severity === (status === 'error' ? 'error' : 'warn'))
+      ?? findings[0];
+    const reason = finding ? ` ${finding.message}` : '';
+    this.showToast(`Unwrap ${status}. ${charts} ${charts === 1 ? 'chart' : 'charts'} ready.${reason}`, kind);
   }
 
   private finishError(error: unknown): void {
@@ -510,9 +547,15 @@ export class App {
       const snapshot = this.result?.stages[index] ?? null;
       const running = this.busy && progress?.id === id;
       const selected = Boolean(this.result) && this.selectedStage === index;
-      const issues = snapshot
-        ? snapshot.issues.filter((issue) => issue.severity !== 'info').length
-        : 0;
+      const nonInfo = snapshot
+        ? snapshot.issues.filter((issue) => issue.severity !== 'info')
+        : [];
+      const issues = nonInfo.length;
+      const issueTitle = nonInfo
+        .map((issue) => `${issue.severity.toUpperCase()}: ${issue.message}`)
+        .join(' ');
+      const issueSeverity = nonInfo.some((issue) => issue.severity === 'error') ? 'error' : 'warn';
+      const primaryIssue = nonInfo.find((issue) => issue.severity === 'error') ?? nonInfo[0];
       const metric = snapshot
         ? stageHeadline(snapshot)
         : running
@@ -525,13 +568,14 @@ export class App {
         selected ? 'is-selected' : '',
       ].filter(Boolean).join(' ');
       return `
-        <li class="${classes}" data-step="${index}" ${selected ? 'aria-current="step"' : ''}>
+        <li class="${classes}" data-step="${index}" ${selected ? 'aria-current="step"' : ''} ${issueTitle ? `title="${escapeHtml(issueTitle)}"` : ''}>
           <span class="step-index">${String(index + 1).padStart(2, '0')}</span>
           <span class="step-body">
             <span class="step-name">${STAGE_LABELS[id]}</span>
             <span class="step-metric">${metric}</span>
+            ${primaryIssue ? `<span class="step-reason is-${primaryIssue.severity}">${escapeHtml(primaryIssue.message)}</span>` : ''}
           </span>
-          ${issues > 0 ? `<span class="step-issues">${issues}</span>` : ''}
+          ${issues > 0 ? `<span class="step-issues is-${issueSeverity}">${issues}</span>` : ''}
         </li>
       `;
     });
@@ -559,10 +603,11 @@ export class App {
         : 'Import a model, run the unwrap, then step through every stage.';
       return;
     }
-    const issues = stage.issues.filter((issue) => issue.severity !== 'info').length;
+    const nonInfo = stage.issues.filter((issue) => issue.severity !== 'info');
+    const primary = nonInfo.find((issue) => issue.severity === 'error') ?? nonInfo[0];
     this.stageTitle.textContent = `${stage.index + 1}. ${stage.label}`;
-    const issueText = issues === 0 ? 'no issues' : `${issues} issue${issues === 1 ? '' : 's'}`;
-    this.stageSubtitle.textContent = `${STAGE_DESCRIPTIONS[stage.id]} ${formatDuration(stage.durationMs)} - ${issueText}.`;
+    const issueText = nonInfo.length === 0 ? 'no issues' : `${nonInfo.length} issue${nonInfo.length === 1 ? '' : 's'}`;
+    this.stageSubtitle.textContent = `${STAGE_DESCRIPTIONS[stage.id]} ${formatDuration(stage.durationMs)} - ${issueText}${primary ? `: ${primary.message}` : ''}`;
   }
 
   private renderControls(): void {
@@ -737,11 +782,26 @@ export class App {
     }
     const result = this.result;
     const status = result.validation.status;
+    const findings = summaryFindings(result);
+    const weaknessErrors = result.validation.topWeaknesses.filter((weakness) => weakness.severity === 'error').length;
+    const alert = status === 'pass' ? '' : `
+      <div class="summary-alert is-${status}" role="${status === 'error' ? 'alert' : 'status'}">
+        <span class="summary-alert-title">${status === 'error' ? 'Why this failed' : 'Why this warns'}</span>
+        ${findings.length > 0
+          ? `<ul>${findings.slice(0, 3).map((finding) => `
+              <li class="is-${finding.severity}">${escapeHtml(finding.message)}</li>
+            `).join('')}</ul>`
+          : '<p>Validation returned a non-pass status without a diagnostic.</p>'}
+        ${findings.length > 3 ? `<span class="summary-alert-more">+${findings.length - 3} more in Validate.</span>` : ''}
+        ${weaknessErrors > 0 ? `<span class="summary-alert-more">${weaknessErrors} weak chart${weaknessErrors === 1 ? '' : 's'} listed in Validate.</span>` : ''}
+      </div>
+    `;
     this.runSummary.innerHTML = `
       <div class="summary-head">
         <span class="summary-model" title="${escapeHtml(this.modelName)}">${escapeHtml(this.modelName)}</span>
         <span class="status-badge is-${status}">${status.toUpperCase()}</span>
       </div>
+      ${alert}
       <dl class="summary-grid">
         <div><dt>Charts</dt><dd>${result.pack.charts.length}</dd></div>
         <div><dt>Density</dt><dd>${Math.round(result.pack.achievedTexelDensity)} px/u</dd></div>
