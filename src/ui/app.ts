@@ -39,7 +39,7 @@ const STAGE_DESCRIPTIONS: Record<StageId, string> = {
   segment: 'Find seams and split the mesh into charts.',
   parameterize: 'Solve per-chart UVs and measure angle and area distortion.',
   normalize: 'Scale every chart toward the target texel density.',
-  inflate: 'Raise the lowest-density faces toward the average; dense faces stay fixed.',
+  inflate: 'Raise the lowest-density faces toward the average; dense faces are not targets.',
   pack: 'Place charts into the atlas and report occupancy.',
   validate: 'Rasterize overlap and rank the weakest charts.',
 };

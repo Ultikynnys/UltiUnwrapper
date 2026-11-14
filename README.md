@@ -77,7 +77,7 @@ Atlas resolution, padding, seam angle, target texel density, 90-degree rotation,
 | 2 | Segment | Dihedral, object, material, and non-manifold seams; flood-fill charts; geodesic cuts for closed charts | Seam edges, chart ids, cut paths, chart areas | Chart colors, seam lines, cut lines |
 | 3 | Parameterize | Per-chart local frame, pinned LSCM, harmonic initialization, winding correction, projection fallback | Chart-local UVs, angle and area distortion, flipped flags | Heatmaps, flipped faces, chart gallery |
 | 4 | Normalize | Scale every chart to the target texel density | Per-chart scales, density before and after, required atlas area | Density heatmap, checker, area heatmap |
-| 5 | Inflate | Repeatedly raise the lowest-density face in each chart toward the average density; dense faces are left alone and charts are never shrunk | Inflation steps, attempted and inflated charts, density before and after | Density change, dashed before outline, density heatmap |
+| 5 | Inflate | Repeatedly raise the lowest-density face in each chart toward the average density; dense faces are not targets and charts are never shrunk | Inflation steps, attempted and inflated charts, density before and after | Density change, dashed before outline, density heatmap |
 | 6 | Pack | MaxRects packing with padding, optional 90-degree rotation, binary-search fit scaling | Placements, atlas UVs, occupancy, achieved density | Atlas, padding outlines, occupancy, checker |
 | 7 | Validate | Interior raster overlap, percentile metrics, weakness ranking, pass/warn/error | Overlap mask, ranked weaknesses, summary | Overlap mask, weakness list, click-to-isolate |
 
