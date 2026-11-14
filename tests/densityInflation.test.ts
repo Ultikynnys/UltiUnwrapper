@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeDensity } from '../src/lib/unwrap/density';
 import { inflateDensity } from '../src/lib/unwrap/inflate';
+import { conditionMesh, computeFaceGeometry } from '../src/lib/unwrap/mesh';
+import { buildTopology } from '../src/lib/unwrap/topology';
+import { segmentMesh } from '../src/lib/unwrap/charts';
+import { parameterizeMesh } from '../src/lib/unwrap/parameterize';
+import { makeCube } from './helpers/meshes';
 import type {
   ChartUv,
   ConditionedMesh,
@@ -70,5 +75,48 @@ describe('density inflation', () => {
     expect(Number(result.stats.densityAfterSpread)).toBeLessThan(Number(result.stats.densityBeforeSpread));
     expect(result.faceTexelDensity[0]).toBeGreaterThan(4);
     expect(result.faceTexelDensity[1]).toBeGreaterThan(13);
+  });
+
+  it('reports a chart that is already at the average density', () => {
+    const { mesh } = conditionMesh(makeCube(2));
+    const topology = buildTopology(mesh);
+    const face = computeFaceGeometry(mesh);
+    const segmentation = segmentMesh(mesh, topology, face, {
+      seamAngle: 66,
+      splitByObject: true,
+      splitByMaterial: false,
+    });
+    const parameterization = parameterizeMesh(mesh, segmentation, face, topology);
+    const normalized = normalizeDensity(mesh, parameterization, face, {
+      atlasResolution: 2048,
+      targetTexelDensity: 256,
+    });
+    const result = inflateDensity(mesh, normalized, face, {
+      atlasResolution: 2048,
+      targetTexelDensity: 256,
+    });
+    expect(result.stats.inflatedCharts).toBe(0);
+    expect(result.issues.some((issue) => issue.code === 'density-already-uniform')).toBe(true);
+  });
+
+  it('reports invalid inflation settings', () => {
+    const { mesh } = conditionMesh(makeCube(2));
+    const topology = buildTopology(mesh);
+    const face = computeFaceGeometry(mesh);
+    const segmentation = segmentMesh(mesh, topology, face, {
+      seamAngle: 66,
+      splitByObject: true,
+      splitByMaterial: false,
+    });
+    const parameterization = parameterizeMesh(mesh, segmentation, face, topology);
+    const normalized = normalizeDensity(mesh, parameterization, face, {
+      atlasResolution: 2048,
+      targetTexelDensity: 256,
+    });
+    const result = inflateDensity(mesh, normalized, face, {
+      atlasResolution: 0,
+      targetTexelDensity: 0,
+    });
+    expect(result.issues.some((issue) => issue.code === 'invalid-density')).toBe(true);
   });
 });
