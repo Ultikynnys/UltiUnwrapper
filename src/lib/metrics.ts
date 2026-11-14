@@ -70,7 +70,7 @@ export function stageCards(stage: StageSnapshot): MetricCard[] {
       return [
         { label: 'Target', value: `${fixed(stage.stats.targetDensity, 0)} px/unit` },
         { label: 'Density p50', value: `${fixed(stage.stats.densityP50, 1)} px/unit` },
-        { label: 'Spread', value: percent(stage.stats.densityAfterSpread, 2) },
+        { label: 'Spread', value: percent(stage.stats.densityAfterSpread, 2), hint: `${count(stage.stats.inflatedCharts)} inflated` },
         { label: 'Area needed', value: percent(stage.stats.requiredAreaFraction, 1), hint: 'before packing' },
       ];
     case 'pack':
