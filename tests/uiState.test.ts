@@ -42,12 +42,13 @@ describe('stage view state', () => {
     expect(STAGE_DEFAULT_VIEW.segment).toBe('charts');
     expect(STAGE_DEFAULT_VIEW.parameterize).toBe('distortion');
     expect(STAGE_DEFAULT_VIEW.normalize).toBe('density');
-    expect(STAGE_DEFAULT_VIEW.inflate).toBe('density');
+    expect(STAGE_DEFAULT_VIEW.inflate).toBe('densityDelta');
     expect(STAGE_DEFAULT_VIEW.pack).toBe('checker');
     expect(STAGE_DEFAULT_VIEW.validate).toBe('overlap');
     expect(STAGE_VIEW_MODES.validate).toContain('charts');
     expect(STAGE_VIEW_MODES.validate).toContain('flipped');
     expect(VIEW_LABELS.overlap).toBe('Overlap');
+    expect(VIEW_LABELS.densityDelta).toBe('Density change');
   });
 
   it('chooses the atlas mode from the stage snapshot', () => {

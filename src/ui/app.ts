@@ -663,6 +663,7 @@ export class App {
       area: 'Area distortion - blue low, red high',
       flipped: 'Flipped faces in magenta',
       density: 'Texel density ratio - blue under, red over',
+      densityDelta: 'Density change - blue unchanged, red increased',
       checker: 'Checker texture - UV scale',
       overlap: 'Overlap texels in red',
     };
@@ -690,6 +691,8 @@ export class App {
       const resolution = stage.atlas?.resolution ?? 0;
       const padding = stage.atlas?.padding ?? 0;
       this.atlasHint.textContent = `${resolution} px atlas - ${padding} px padding - click a chart`;
+    } else if (stage.id === 'inflate') {
+      this.atlasHint.textContent = 'Chart gallery - dashed is normalized, solid is inflated';
     } else {
       this.atlasHint.textContent = 'Chart gallery - click a chart to inspect it';
     }

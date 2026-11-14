@@ -335,11 +335,13 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     seamEdges: edgeIds(segmentation.seamEdge),
     cutEdges: segmentation.cutEdgeIndices,
     charts: inflation.charts,
+    previousCharts: density.charts,
     atlas: null,
     face: {
       angleDistortion: parameterization.angleDistortion,
       areaDistortion: parameterization.areaDistortion,
       texelDensity: inflation.faceTexelDensity,
+      texelDensityBefore: density.faceTexelDensity,
       densityRatio: inflation.densityRatio,
       flipped: parameterization.flipped,
     },

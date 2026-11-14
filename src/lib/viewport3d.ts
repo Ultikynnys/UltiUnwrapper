@@ -28,7 +28,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { chartColor, densityColor, heatColor } from './unwrap/colors';
 import type { ConditionedMesh, MeshTopology, StageSnapshot } from './unwrap/types';
 
-export type StageViewMode = 'clay' | 'charts' | 'distortion' | 'area' | 'flipped' | 'density' | 'checker' | 'overlap';
+export type StageViewMode = 'clay' | 'charts' | 'distortion' | 'area' | 'flipped' | 'density' | 'densityDelta' | 'checker' | 'overlap';
 
 export type ViewportState = {
   stage: StageSnapshot | null;
@@ -244,6 +244,12 @@ export class Viewport3D {
         ?? 1,
       ) || 1;
       return luminance(densityColor(density / reference), dim);
+    }
+    if (this.state?.mode === 'densityDelta') {
+      const before = stage.face.texelDensityBefore?.[triangle] ?? 0;
+      const after = stage.face.texelDensity?.[triangle] ?? before;
+      const delta = before > 0 ? after / before - 1 : 0;
+      return luminance(heatColor(Math.max(0, delta), 0.2), dim);
     }
     return luminance(chartColor(chart), dim);
   }

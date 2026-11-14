@@ -77,10 +77,10 @@ export function stageCards(stage: StageSnapshot): MetricCard[] {
       ];
     case 'inflate':
       return [
+        { label: 'Before spread', value: percent(stage.stats.densityBeforeSpread, 2) },
+        { label: 'After spread', value: percent(stage.stats.densityAfterSpread, 2) },
         { label: 'Inflated', value: count(stage.stats.inflatedCharts), hint: `${count(stage.stats.attemptedCharts)} attempted` },
         { label: 'Steps', value: count(stage.stats.inflationIterations), hint: 'max per chart' },
-        { label: 'Spread', value: percent(stage.stats.densityAfterSpread, 2), hint: 'after inflation' },
-        { label: 'Area used', value: percent(stage.stats.uvAreaFraction, 1), hint: 'before packing' },
       ];
     case 'pack':
       return [

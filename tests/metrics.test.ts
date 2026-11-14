@@ -48,14 +48,15 @@ describe('stage headlines', () => {
       uvAreaFraction: 0.5,
     }));
     expect(cards.map((card) => card.label)).toEqual([
+      'Before spread',
+      'After spread',
       'Inflated',
       'Steps',
-      'Spread',
-      'Area used',
     ]);
-    expect(cards[0].value).toBe('2');
-    expect(cards[0].hint).toBe('4 attempted');
-    expect(cards[2].value).toBe('12.00%');
+    expect(cards[0].value).toBe('-');
+    expect(cards[1].value).toBe('12.00%');
+    expect(cards[2].value).toBe('2');
+    expect(cards[2].hint).toBe('4 attempted');
   });
 
   it('builds the validate cards from the final metrics', () => {

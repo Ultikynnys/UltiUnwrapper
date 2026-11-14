@@ -133,8 +133,8 @@ function inflateChart(
     const next = new Float32Array(uvs.length);
     let nextArea = 0;
     for (let vertex = 0; vertex < count; vertex += 1) {
-      next[vertex * 2] = uvs[vertex * 2] + forceU[vertex] * 0.01;
-      next[vertex * 2 + 1] = uvs[vertex * 2 + 1] + forceV[vertex] * 0.01;
+      next[vertex * 2] = uvs[vertex * 2] + forceU[vertex] * 0.02;
+      next[vertex * 2 + 1] = uvs[vertex * 2 + 1] + forceV[vertex] * 0.02;
     }
     let valid = true;
     for (let local = 0; local < chart.triangles.length; local += 1) {
@@ -155,111 +155,20 @@ function inflateChart(
     }
     if (!valid) break;
     const nextFaceDensities = chartFaceDensities(chart, face, resolution, next);
-    let currentMin = Infinity;
-    let nextMin = Infinity;
-    for (let local = 0; local < faceDensities.length; local += 1) {
-      if (faceDensities[local] > EPSILON) currentMin = Math.min(currentMin, faceDensities[local]);
-      if (nextFaceDensities[local] > EPSILON) nextMin = Math.min(nextMin, nextFaceDensities[local]);
-    }
     const nextSpread = densitySpread(nextFaceDensities);
-    if (nextMin < currentMin - 1e-9 || nextArea <= totalArea + EPSILON || nextSpread >= currentSpread - 1e-9) break;
+    if (nextArea <= totalArea + EPSILON || nextSpread > currentSpread * 1.02 + 1e-9) break;
     uvs = next;
     totalArea = nextArea;
     currentSpread = nextSpread;
     maxFactor = Math.max(maxFactor, localMax);
     iterations += 1;
   }
-  if (iterations === 0 && chart.triangles.length <= 4000) {
-    const initialDensities = chartFaceDensities(chart, face, resolution, uvs);
-    const order = Array.from({ length: chart.triangles.length }, (_, index) => index)
-      .sort((a, b) => initialDensities[a] - initialDensities[b]);
-    for (let pass = 0; pass < 8; pass += 1) {
-      const baseDensities = chartFaceDensities(chart, face, resolution, uvs);
-      const maxDensity = new Float32Array(count);
-      for (let local = 0; local < chart.triangles.length; local += 1) {
-        for (let corner = 0; corner < 3; corner += 1) {
-          const vertex = chart.localIndices[local * 3 + corner];
-          maxDensity[vertex] = Math.max(maxDensity[vertex], baseDensities[local]);
-        }
-      }
-      const pinned = new Uint8Array(count);
-      for (let vertex = 0; vertex < count; vertex += 1) {
-        pinned[vertex] = maxDensity[vertex] >= reference * 1.15 ? 1 : 0;
-      }
-      let currentMin = Infinity;
-      for (const density of baseDensities) {
-        if (density > EPSILON) currentMin = Math.min(currentMin, density);
-      }
-      let accepted = false;
-      for (const local of order) {
-        if (!(baseDensities[local] > EPSILON) || baseDensities[local] >= reference) continue;
-        const a = chart.localIndices[local * 3] * 2;
-        const b = chart.localIndices[local * 3 + 1] * 2;
-        const c = chart.localIndices[local * 3 + 2] * 2;
-        const vertices = [
-          chart.localIndices[local * 3],
-          chart.localIndices[local * 3 + 1],
-          chart.localIndices[local * 3 + 2],
-        ];
-        if (vertices.some((vertex) => pinned[vertex])) continue;
-        const area = Math.abs(signedTriangleArea2D(
-          uvs[a], uvs[a + 1],
-          uvs[b], uvs[b + 1],
-          uvs[c], uvs[c + 1],
-        ));
-        const targetArea = face.areas[chart.triangles[local]] * areaScale;
-        if (!(area > EPSILON) || !(targetArea > area)) continue;
-        const factor = Math.min(maxInflation, Math.sqrt(targetArea / area));
-        const cx = (uvs[a] + uvs[b] + uvs[c]) / 3;
-        const cy = (uvs[a + 1] + uvs[b + 1] + uvs[c + 1]) / 3;
-        const trial = new Float32Array(uvs);
-        for (const vertex of vertices) {
-          trial[vertex * 2] = uvs[vertex * 2] + (uvs[vertex * 2] - cx) * (factor - 1) * 0.1;
-          trial[vertex * 2 + 1] = uvs[vertex * 2 + 1] + (uvs[vertex * 2 + 1] - cy) * (factor - 1) * 0.1;
-        }
-        let valid = true;
-        let trialArea = 0;
-        for (let test = 0; test < chart.triangles.length; test += 1) {
-          const ta = chart.localIndices[test * 3] * 2;
-          const tb = chart.localIndices[test * 3 + 1] * 2;
-          const tc = chart.localIndices[test * 3 + 2] * 2;
-          const testArea = signedTriangleArea2D(
-            trial[ta], trial[ta + 1],
-            trial[tb], trial[tb + 1],
-            trial[tc], trial[tc + 1],
-          );
-          const sign = testArea > EPSILON ? 1 : testArea < -EPSILON ? -1 : 0;
-          if (initialSigns[test] !== 0 && sign !== initialSigns[test]) {
-            valid = false;
-            break;
-          }
-          trialArea += Math.abs(testArea);
-        }
-        if (!valid || trialArea <= totalArea + EPSILON) continue;
-        const nextDensities = chartFaceDensities(chart, face, resolution, trial);
-        let nextMin = Infinity;
-        for (const density of nextDensities) {
-          if (density > EPSILON) nextMin = Math.min(nextMin, density);
-        }
-        const nextSpread = densitySpread(nextDensities);
-        if (nextMin < currentMin - 1e-9 || nextSpread >= currentSpread - 1e-9) continue;
-        uvs = trial;
-        totalArea = trialArea;
-        currentSpread = nextSpread;
-        maxFactor = Math.max(maxFactor, factor);
-        iterations += 1;
-        accepted = true;
-        break;
-      }
-      if (!accepted) break;
-    }
-  }
   return { uvs, iterations, maxFactor, attempted };
 }
 
 /** Inflation-only density pass. It runs after chart normalization and never
- * shrinks a chart; a step is rejected when it lowers the minimum face density
- * or fails to reduce the spread. */
+ * shrinks a chart; a step is rejected when it folds a triangle or lets the
+ * chart spread grow by more than 2%. */
 export function inflateDensity(
   mesh: ConditionedMesh,
   normalized: DensityResult,
@@ -269,7 +178,7 @@ export function inflateDensity(
   const resolution = Math.max(1, Math.round(options.atlasResolution));
   const target = Math.max(0, options.targetTexelDensity);
   const maxInflation = options.maxInflation ?? 1.2;
-  const maxIterations = Math.max(1, Math.round(options.maxIterations ?? 24));
+  const maxIterations = Math.max(1, Math.round(options.maxIterations ?? 8));
   const issues: Issue[] = [];
   if (options.atlasResolution <= 0 || options.targetTexelDensity <= 0) {
     issues.push({

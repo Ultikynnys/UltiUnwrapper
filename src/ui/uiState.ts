@@ -11,6 +11,7 @@ export const VIEW_LABELS: Record<StageViewMode, string> = {
   density: 'Texel density',
   checker: 'Checker',
   overlap: 'Overlap',
+  densityDelta: 'Density change',
 };
 
 export const STAGE_VIEW_MODES: Record<StageId, StageViewMode[]> = {
@@ -18,7 +19,7 @@ export const STAGE_VIEW_MODES: Record<StageId, StageViewMode[]> = {
   segment: ['charts'],
   parameterize: ['distortion', 'area', 'flipped', 'charts', 'clay'],
   normalize: ['density', 'checker', 'area', 'charts'],
-  inflate: ['density', 'checker', 'area', 'charts'],
+  inflate: ['densityDelta', 'density', 'checker', 'area', 'charts'],
   pack: ['checker', 'charts', 'area'],
   validate: ['overlap', 'density', 'distortion', 'area', 'flipped', 'charts'],
 };
@@ -28,7 +29,7 @@ export const STAGE_DEFAULT_VIEW: Record<StageId, StageViewMode> = {
   segment: 'charts',
   parameterize: 'distortion',
   normalize: 'density',
-  inflate: 'density',
+  inflate: 'densityDelta',
   pack: 'checker',
   validate: 'overlap',
 };

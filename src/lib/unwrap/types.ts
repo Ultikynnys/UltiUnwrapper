@@ -284,11 +284,14 @@ export type StageSnapshot = {
   /** Edge ids added by geodesic cuts. */
   cutEdges: Uint32Array | null;
   charts: ChartUv[] | null;
+  /** Normalized charts before the inflate pass, for before/after inspection. */
+  previousCharts?: ChartUv[] | null;
   atlas: AtlasInfo | null;
   face: {
     angleDistortion?: Float32Array;
     areaDistortion?: Float32Array;
     texelDensity?: Float32Array;
+    texelDensityBefore?: Float32Array;
     densityRatio?: Float32Array;
     flipped?: Uint8Array;
   };

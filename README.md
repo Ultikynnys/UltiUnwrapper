@@ -51,7 +51,7 @@ The view menu is stage-specific.
 | Segment | Chart colors with seam edges in amber and geodesic cuts in pink |
 | Parameterize | Angle distortion, area distortion, flipped faces, charts, clay |
 | Normalize | Texel density, checker, area distortion, charts |
-| Inflate | Texel density, checker, area distortion, charts |
+| Inflate | Density change, texel density, checker, area distortion, charts |
 | Pack | Checker, charts, area distortion |
 | Validate | Overlap, texel density, angle distortion, area distortion, flipped faces, charts |
 
@@ -60,7 +60,7 @@ The view menu is stage-specific.
 ### 2D pane
 
 - `atlas`: true packed atlas with padding outlines and the overlap mask.
-- `gallery`: one diagnostic cell per chart. A single shared scale preserves relative chart size, so density differences remain visible.
+- `gallery`: one diagnostic cell per chart. A single shared scale preserves relative chart size, so density differences remain visible. In the inflate stage the normalized outline is dashed and the inflated outline is solid.
 - `inventory`: chart count and a note that the stage has no flattened layout yet.
 
 Click a chart in either pane to isolate it. Click empty space or use `Clear chart` to clear it.
@@ -81,7 +81,7 @@ Atlas resolution, padding, seam angle, target texel density, 90-degree rotation,
 | 6 | Pack | MaxRects packing with padding, optional 90-degree rotation, binary-search fit scaling | Placements, atlas UVs, occupancy, achieved density | Atlas, padding outlines, occupancy, checker |
 | 7 | Validate | Interior raster overlap, percentile metrics, weakness ranking, pass/warn/error | Overlap mask, ranked weaknesses, summary | Overlap mask, weakness list, click-to-isolate |
 
-Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target when possible. Stage 5 then inflates individual faces below the reference density, pinning dense vertices, smoothing the displacement, and applying small steps; it never shrinks a chart. If a step would fold a triangle, lower the minimum face density, or fail to reduce the spread, it is rejected and reported in the stage issues. Stage 6 may reduce all charts uniformly when the target does not fit and reports the achieved density. With `fitToAtlas` enabled it instead grows every chart uniformly until the atlas is full, and reports the resulting higher density. Charts with large concave silhouettes use rasterized silhouette packing, so their bounding boxes may overlap while their triangles do not. Simpler chart sets use MaxRects with four free-rectangle heuristics, four item orders, and optional 90-degree rotation.
+Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target when possible. Stage 5 then inflates individual faces below the reference density, pinning dense vertices, smoothing the displacement, and applying small steps; it never shrinks a chart. A step is rejected when it folds a triangle or lets the chart spread grow beyond 2%. The stage shows before and after spread, the number of inflated charts, and an optional density-change view. Stage 6 may reduce all charts uniformly when the target does not fit and reports the achieved density. With `fitToAtlas` enabled it instead grows every chart uniformly until the atlas is full, and reports the resulting higher density. Charts with large concave silhouettes use rasterized silhouette packing, so their bounding boxes may overlap while their triangles do not. Simpler chart sets use MaxRects with four free-rectangle heuristics, four item orders, and optional 90-degree rotation.
 
 A closed chart cannot be flattened as a disk. Stage 2 finds a geodesic cut path, marks it as a seam, and resegments. The cut is shown in pink and counted in `cutsAdded`.
 
