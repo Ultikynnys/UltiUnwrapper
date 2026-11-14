@@ -26,6 +26,12 @@ describe('UV rasterization', () => {
     expect(result.counts.every((value) => value === 2)).toBe(true);
   });
 
+  it('ignores shared edges in interior mode', () => {
+    const result = rasterizeCoverage(16, 8, square, { interior: true });
+    expect(result.overlapping).toBe(0);
+    expect(result.covered).toBeGreaterThan(0);
+  });
+
   it('ignores degenerate triangles', () => {
     const result = rasterizeCoverage(8, 8, [{ uv: [[0, 0], [1, 0], [2, 0]] }]);
     expect(result.covered).toBe(0);

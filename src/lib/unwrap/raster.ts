@@ -19,6 +19,12 @@ export type RasterWrite = (
   triangle: number,
 ) => void;
 
+export type RasterOptions = {
+  /** Ignore texels on triangle edges. Used for overlap detection so two
+   * triangles meeting on a shared 3D edge do not count as overlapping. */
+  interior?: boolean;
+};
+
 const EPSILON = 1e-9;
 
 function edge(
@@ -45,6 +51,7 @@ export function rasterizeTriangles(
   height: number,
   triangles: readonly RasterTriangle[],
   write: RasterWrite,
+  options: RasterOptions = {},
 ): void {
   if (width <= 0 || height <= 0) return;
   for (let triangle = 0; triangle < triangles.length; triangle += 1) {
@@ -68,7 +75,10 @@ export function rasterizeTriangles(
         const w0 = edge(bx, by, cx, cy, sampleX, sampleY) / signedArea;
         const w1 = edge(cx, cy, ax, ay, sampleX, sampleY) / signedArea;
         const w2 = edge(ax, ay, bx, by, sampleX, sampleY) / signedArea;
-        if (w0 >= -EPSILON && w1 >= -EPSILON && w2 >= -EPSILON) {
+        const inside = options.interior
+          ? w0 > EPSILON && w1 > EPSILON && w2 > EPSILON
+          : w0 >= -EPSILON && w1 >= -EPSILON && w2 >= -EPSILON;
+        if (inside) {
           write(px, py, w0, w1, w2, triangle);
         }
       }
@@ -91,6 +101,7 @@ export function rasterizeCoverage(
   width: number,
   height: number,
   triangles: readonly RasterTriangle[],
+  options: RasterOptions = {},
 ): CoverageResult {
   const counts = new Uint8Array(width * height);
   let covered = 0;
@@ -100,6 +111,6 @@ export function rasterizeCoverage(
     if (counts[index] === 0) covered += 1;
     if (counts[index] === 1) overlapping += 1;
     if (counts[index] < 2) counts[index] += 1;
-  });
+  }, options);
   return { width, height, counts, covered, overlapping };
 }

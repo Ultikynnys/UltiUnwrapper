@@ -197,3 +197,76 @@ export type ChartPlacement = {
 export type PackedChart = ChartUv & {
   placement: ChartPlacement;
 };
+
+export type WeaknessKind = 'overlap' | 'angle' | 'area' | 'density' | 'flipped';
+
+export type Weakness = {
+  chart: number;
+  kind: WeaknessKind;
+  value: number;
+  threshold: number;
+  severity: 'warn' | 'error';
+  message: string;
+  score: number;
+};
+
+export type AtlasInfo = {
+  resolution: number;
+  padding: number;
+  scale: number;
+  occupancy: number;
+  bboxOccupancy: number;
+  placements: ChartPlacement[];
+};
+
+export type PackResult = {
+  charts: PackedChart[];
+  /** 6 floats per global triangle, atlas UVs in [0,1]. */
+  triangleUvs: Float32Array;
+  placements: ChartPlacement[];
+  /** Uniform scale applied after density normalization. */
+  scale: number;
+  achievedTexelDensity: number;
+  faceTexelDensity: Float32Array;
+  /** Rasterized triangle coverage over the atlas area. */
+  occupancy: number;
+  /** Sum of chart bounding-box areas over the atlas area. */
+  bboxOccupancy: number;
+  stats: StageStats;
+  issues: Issue[];
+};
+
+export type StageStatus = 'ok' | 'warn' | 'error';
+
+export type StageSnapshot = {
+  id: StageId;
+  index: number;
+  label: string;
+  durationMs: number;
+  status: StageStatus;
+  stats: StageStats;
+  issues: Issue[];
+  /** 6 floats per global triangle, null before parameterization. */
+  uvs: Float32Array | null;
+  chartOfTriangle: Uint32Array | null;
+  chartCount: number;
+  /** Edge ids on the chart border, including model boundaries and cuts. */
+  seamEdges: Uint32Array | null;
+  /** Edge ids added by geodesic cuts. */
+  cutEdges: Uint32Array | null;
+  charts: ChartUv[] | null;
+  atlas: AtlasInfo | null;
+  face: {
+    angleDistortion?: Float32Array;
+    areaDistortion?: Float32Array;
+    texelDensity?: Float32Array;
+    densityRatio?: Float32Array;
+    flipped?: Uint8Array;
+  };
+  overlapMask: Uint8Array | null;
+  overlapWidth: number;
+  overlapHeight: number;
+  weaknesses: Weakness[];
+};
+
+

@@ -4,7 +4,8 @@ type BuildEnv = {
 };
 
 const env = (import.meta as ImportMeta & { env?: BuildEnv }).env ?? {};
+const processEnv = typeof process !== 'undefined' ? process.env : undefined;
 
-export const BUILD_VERSION = env.VITE_BUILD_VERSION ?? '0.0.0-dev';
-export const COMMIT_SHA = env.VITE_COMMIT_SHA ?? 'LOCAL';
+export const BUILD_VERSION = env.VITE_BUILD_VERSION ?? processEnv?.VITE_BUILD_VERSION ?? '0.0.0-dev';
+export const COMMIT_SHA = env.VITE_COMMIT_SHA ?? processEnv?.VITE_COMMIT_SHA ?? 'LOCAL';
 export const BUILD_LABEL = `v${BUILD_VERSION} - ${COMMIT_SHA}`;

@@ -8,8 +8,11 @@ import type {
   DensityResult,
   Issue,
   PackedChart,
+  PackResult,
   StageStats,
 } from './types';
+
+export type { PackResult } from './types';
 
 export type PackOptions = {
   atlasResolution: number;
@@ -18,23 +21,7 @@ export type PackOptions = {
   targetTexelDensity: number;
   fitIterations?: number;
   occupancyResolution?: number;
-};
-
-export type PackResult = {
-  charts: PackedChart[];
-  /** 6 floats per global triangle, atlas UVs in [0,1]. */
-  triangleUvs: Float32Array;
-  placements: ChartPlacement[];
-  /** Uniform scale applied after density normalization. */
-  scale: number;
-  achievedTexelDensity: number;
-  faceTexelDensity: Float32Array;
-  /** Rasterized triangle coverage over the atlas area. */
-  occupancy: number;
-  /** Sum of chart bounding-box areas over the atlas area. */
-  bboxOccupancy: number;
-  stats: StageStats;
-  issues: Issue[];
+  minOccupancy?: number;
 };
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -390,14 +377,15 @@ export function packAtlas(
       value: Number(bestScale.toFixed(6)),
     });
   }
-  if (charts.length > 1 && occupancy < 0.4) {
+  const minOccupancy = options.minOccupancy ?? 0.3;
+  if (charts.length > 1 && occupancy < minOccupancy) {
     issues.push({
       stage: 'pack',
       severity: 'warn',
       code: 'low-occupancy',
       message: `Atlas occupancy is ${(occupancy * 100).toFixed(1)}%.`,
       value: Number(occupancy.toFixed(6)),
-      threshold: 0.4,
+      threshold: minOccupancy,
     });
   }
   if (options.allowRotation && placements.some((placement) => placement.rotation === 90)) {

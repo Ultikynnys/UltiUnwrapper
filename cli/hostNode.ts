@@ -2,8 +2,8 @@
  * Node CLI host. Used by `npm run cli`, the test suite, and CI. The shipped
  * desktop binary uses the webview host instead; the pipeline is identical.
  */
-import { readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import type { CliHost } from './host';
 
 export const nodeCliHost: CliHost = {
@@ -16,6 +16,7 @@ export const nodeCliHost: CliHost = {
   },
 
   async writeFileBytes(path: string, bytes: Uint8Array): Promise<void> {
+    await mkdir(dirname(path), { recursive: true });
     await writeFile(path, bytes, { flag: 'w' });
   },
 
