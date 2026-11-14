@@ -5,6 +5,7 @@ import {
   type UnwrapConfig,
 } from './config';
 import { normalizeDensity } from './density';
+import { inflateDensity } from './inflate';
 import { conditionMesh, computeFaceGeometry, type FaceGeometry } from './mesh';
 import { packAtlas, type PackResult } from './pack';
 import { computeSeams } from './seams';
@@ -54,6 +55,7 @@ export type UnwrapResult = {
   segmentation: Segmentation;
   parameterization: ParameterizeResult;
   density: DensityResult;
+  inflation: DensityResult;
   pack: PackResult;
   validation: ValidationResult;
   stages: StageSnapshot[];
@@ -313,8 +315,44 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
   emit('normalize', 3, 'done', normalizeDuration);
 
   started = clock();
-  emit('pack', 4, 'start');
-  const pack = packAtlas(condition.mesh, density, face, {
+  emit('inflate', 4, 'start');
+  const inflation = inflateDensity(condition.mesh, density, face, {
+    atlasResolution: config.atlasResolution,
+    targetTexelDensity: config.targetTexelDensity,
+  });
+  const inflateDuration = clock() - started;
+  stages.push({
+    id: 'inflate',
+    index: 4,
+    label: STAGE_LABELS.inflate,
+    durationMs: inflateDuration,
+    status: stageStatus(inflation.issues),
+    stats: inflation.stats,
+    issues: inflation.issues,
+    uvs: inflation.triangleUvs,
+    chartOfTriangle: segmentation.chartOfTriangle,
+    chartCount: segmentation.charts.length,
+    seamEdges: edgeIds(segmentation.seamEdge),
+    cutEdges: segmentation.cutEdgeIndices,
+    charts: inflation.charts,
+    atlas: null,
+    face: {
+      angleDistortion: parameterization.angleDistortion,
+      areaDistortion: parameterization.areaDistortion,
+      texelDensity: inflation.faceTexelDensity,
+      densityRatio: inflation.densityRatio,
+      flipped: parameterization.flipped,
+    },
+    overlapMask: null,
+    overlapWidth: 0,
+    overlapHeight: 0,
+    weaknesses: [],
+  });
+  emit('inflate', 4, 'done', inflateDuration);
+
+  started = clock();
+  emit('pack', 5, 'start');
+  const pack = packAtlas(condition.mesh, inflation, face, {
     atlasResolution: config.atlasResolution,
     padding: config.padding,
     allowRotation: config.allowRotation,
@@ -327,7 +365,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
   const packedAtlas = atlasInfo(pack);
   stages.push({
     id: 'pack',
-    index: 4,
+    index: 5,
     label: STAGE_LABELS.pack,
     durationMs: packDuration,
     status: stageStatus(pack.issues),
@@ -351,10 +389,10 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     overlapHeight: 0,
     weaknesses: [],
   });
-  emit('pack', 4, 'done', packDuration);
+  emit('pack', 5, 'done', packDuration);
 
   started = clock();
-  emit('validate', 5, 'start');
+  emit('validate', 6, 'start');
   const validation = validateUnwrap(condition.mesh, parameterization, pack, {
     ...config.thresholds,
     occupancyResolution: config.occupancyResolution,
@@ -362,7 +400,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
   const validateDuration = clock() - started;
   stages.push({
     id: 'validate',
-    index: 5,
+    index: 6,
     label: STAGE_LABELS.validate,
     durationMs: validateDuration,
     status: validationStatus(validation.status),
@@ -386,7 +424,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     overlapHeight: validation.overlapHeight,
     weaknesses: validation.topWeaknesses,
   });
-  emit('validate', 5, 'done', validateDuration);
+  emit('validate', 6, 'done', validateDuration);
 
   const report = buildReport({
     version: options.version ?? 'dev',
@@ -404,7 +442,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     validation,
     pack,
     parameterization,
-    density,
+    density: inflation,
   });
 
   return {
@@ -415,6 +453,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     segmentation,
     parameterization,
     density,
+    inflation,
     pack,
     validation,
     stages,

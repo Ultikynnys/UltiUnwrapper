@@ -74,8 +74,9 @@ describe('CLI', () => {
     expect(await readFile(join(stages, 'stage-03-parameterize.json'), 'utf8')).toContain('angleP95');
     expect(await readFile(join(stages, 'stage-03-parameterize.obj'), 'utf8')).toContain('vt ');
     expect(await readFile(join(stages, 'stage-03-parameterize.svg'), 'utf8')).toContain('<svg');
-    expect(await readFile(join(stages, 'stage-05-pack.svg'), 'utf8')).toContain('stroke-dasharray');
-    expect(await readFile(join(stages, 'stage-06-validate.json'), 'utf8')).toContain('overlapFraction');
+    expect(await readFile(join(stages, 'stage-05-inflate.json'), 'utf8')).toContain('inflatedCharts');
+    expect(await readFile(join(stages, 'stage-06-pack.svg'), 'utf8')).toContain('stroke-dasharray');
+    expect(await readFile(join(stages, 'stage-07-validate.json'), 'utf8')).toContain('overlapFraction');
   });
 
   it('fails check thresholds on a distorted sphere', async () => {

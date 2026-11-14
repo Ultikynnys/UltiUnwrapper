@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeDensity } from '../src/lib/unwrap/density';
+import { inflateDensity } from '../src/lib/unwrap/inflate';
 import type {
   ChartUv,
   ConditionedMesh,
@@ -54,13 +55,16 @@ describe('density inflation', () => {
       stats: {},
       issues: [],
     };
-    const result = normalizeDensity(mesh(), parameterization, {
+    const face = {
       normals: new Float32Array([0, 0, 1, 0, 0, 1]),
       areas: new Float32Array([1, 1]),
-    }, {
+    };
+    const options = {
       atlasResolution: 10,
       targetTexelDensity: 10,
-    });
+    };
+    const normalized = normalizeDensity(mesh(), parameterization, face, options);
+    const result = inflateDensity(mesh(), normalized, face, options);
     expect(result.stats.inflatedCharts).toBe(1);
     expect(result.stats.inflationIterations).toBeGreaterThan(0);
     expect(Number(result.stats.densityAfterSpread)).toBeLessThan(Number(result.stats.densityBeforeSpread));

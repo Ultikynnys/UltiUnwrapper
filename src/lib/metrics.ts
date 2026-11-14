@@ -34,6 +34,8 @@ export function stageHeadline(stage: StageSnapshot): string {
       return `p95 ${fixed(stage.stats.angleP95, 1)} deg`;
     case 'normalize':
       return `${fixed(stage.stats.densityP50, 0)} px/unit`;
+    case 'inflate':
+      return `${count(stage.stats.inflatedCharts)} inflated`;
     case 'pack':
       return `${percent(stage.stats.occupancy, 0)} packed`;
     case 'validate':
@@ -70,8 +72,15 @@ export function stageCards(stage: StageSnapshot): MetricCard[] {
       return [
         { label: 'Target', value: `${fixed(stage.stats.targetDensity, 0)} px/unit` },
         { label: 'Density p50', value: `${fixed(stage.stats.densityP50, 1)} px/unit` },
-        { label: 'Spread', value: percent(stage.stats.densityAfterSpread, 2), hint: `${count(stage.stats.inflatedCharts)} inflated` },
+        { label: 'Spread', value: percent(stage.stats.densityAfterSpread, 2) },
         { label: 'Area needed', value: percent(stage.stats.requiredAreaFraction, 1), hint: 'before packing' },
+      ];
+    case 'inflate':
+      return [
+        { label: 'Inflated', value: count(stage.stats.inflatedCharts), hint: `${count(stage.stats.attemptedCharts)} attempted` },
+        { label: 'Steps', value: count(stage.stats.inflationIterations), hint: 'max per chart' },
+        { label: 'Spread', value: percent(stage.stats.densityAfterSpread, 2), hint: 'after inflation' },
+        { label: 'Area used', value: percent(stage.stats.uvAreaFraction, 1), hint: 'before packing' },
       ];
     case 'pack':
       return [

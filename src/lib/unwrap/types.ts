@@ -8,6 +8,7 @@ export type StageId =
   | 'segment'
   | 'parameterize'
   | 'normalize'
+  | 'inflate'
   | 'pack'
   | 'validate';
 
@@ -188,6 +189,13 @@ export type DensityOptions = {
   targetTexelDensity: number;
   minChartScale?: number;
   maxChartScale?: number;
+};
+
+export type InflateOptions = DensityOptions & {
+  /** Largest face inflation applied in one step. */
+  maxInflation?: number;
+  /** Maximum number of inflation iterations per chart. */
+  maxIterations?: number;
 };
 
 export type DensityResult = {

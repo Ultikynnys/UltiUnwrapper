@@ -1,15 +1,15 @@
 # UltiUnwrapper
 
-UltiUnwrapper is an instrumented UV unwrapping studio for input meshes. It runs a six-stage unwrap, keeps an immutable snapshot of every stage, and lets you step back through the finished run to see where the automatic layout is weak.
+UltiUnwrapper is an instrumented UV unwrapping studio for input meshes. It runs a seven-stage unwrap, keeps an immutable snapshot of every stage, and lets you step back through the finished run to see where the automatic layout is weak.
 
 Every stage keeps its own UVs, chart ids, seam edges, per-face metrics, atlas placements, issues, and duration. The UI replays those snapshots, so inspection does not rerun the pipeline.
 
 ## Features
 
 - Imports FBX, OBJ, glTF, and GLB bundles. Companion textures and `.bin` files can be dropped with the primary model.
-- Six named stages: condition, segment, parameterize, normalize, pack, validate.
+- Seven named stages: condition, segment, parameterize, normalize, inflate, pack, validate.
 - 3D viewport with chart colors, seam and cut overlays, angle and area distortion heatmaps, flipped faces, texel-density heatmap, checker material, wireframe, and overlap view.
-- 2D pane with the packed atlas for pack and validate, a diagnostic chart gallery for parameterize and normalize, and a chart inventory for condition and segment.
+- 2D pane with the packed atlas for pack and validate, a diagnostic chart gallery for parameterize, normalize, and inflate, and a chart inventory for condition and segment.
 - Synchronized chart selection: click a chart in 3D or 2D and both panes isolate it.
 - Ranked weakness list. Selecting a weakness jumps to validate, isolates the chart, and switches to the matching heatmap.
 - Metrics strip, per-stage stat and issue inspector, distortion and density histograms.
@@ -39,7 +39,7 @@ npm run cli -- --help
 
 ### Stage rail
 
-The left rail lists all six stages with a headline metric and warning count. Once a run finishes, select any stage to inspect its snapshot. The run summary below the rail shows the model, validation status, chart count, achieved density, occupancy, and overlap.
+The left rail lists all seven stages with a headline metric and warning count. Once a run finishes, select any stage to inspect its snapshot. The run summary below the rail shows the model, validation status, chart count, achieved density, occupancy, and overlap.
 
 ### View controls
 
@@ -51,6 +51,7 @@ The view menu is stage-specific.
 | Segment | Chart colors with seam edges in amber and geodesic cuts in pink |
 | Parameterize | Angle distortion, area distortion, flipped faces, charts, clay |
 | Normalize | Texel density, checker, area distortion, charts |
+| Inflate | Texel density, checker, area distortion, charts |
 | Pack | Checker, charts, area distortion |
 | Validate | Overlap, texel density, angle distortion, area distortion, flipped faces, charts |
 
@@ -75,15 +76,16 @@ Atlas resolution, padding, seam angle, target texel density, 90-degree rotation,
 | 1 | Condition | World-space flatten, weld, degenerate removal, edge topology | Welded mesh, source map, boundary and non-manifold edges | Clay mesh, amber boundary, red non-manifold |
 | 2 | Segment | Dihedral, object, material, and non-manifold seams; flood-fill charts; geodesic cuts for closed charts | Seam edges, chart ids, cut paths, chart areas | Chart colors, seam lines, cut lines |
 | 3 | Parameterize | Per-chart local frame, pinned LSCM, harmonic initialization, winding correction, projection fallback | Chart-local UVs, angle and area distortion, flipped flags | Heatmaps, flipped faces, chart gallery |
-| 4 | Normalize | Scale each chart to the target, then inflate low-density faces with a smoothed falloff; dense areas are never shrunk | Per-chart scales, inflation steps, density before and after | Density heatmap, checker, area heatmap |
-| 5 | Pack | MaxRects packing with padding, optional 90-degree rotation, binary-search fit scaling | Placements, atlas UVs, occupancy, achieved density | Atlas, padding outlines, occupancy, checker |
-| 6 | Validate | Interior raster overlap, percentile metrics, weakness ranking, pass/warn/error | Overlap mask, ranked weaknesses, summary | Overlap mask, weakness list, click-to-isolate |
+| 4 | Normalize | Scale every chart to the target texel density | Per-chart scales, density before and after, required atlas area | Density heatmap, checker, area heatmap |
+| 5 | Inflate | Raise faces below the reference density with a smoothed falloff; dense faces are pinned and charts are never shrunk | Inflation steps, attempted and inflated charts, density before and after | Density heatmap, checker, area heatmap |
+| 6 | Pack | MaxRects packing with padding, optional 90-degree rotation, binary-search fit scaling | Placements, atlas UVs, occupancy, achieved density | Atlas, padding outlines, occupancy, checker |
+| 7 | Validate | Interior raster overlap, percentile metrics, weakness ranking, pass/warn/error | Overlap mask, ranked weaknesses, summary | Overlap mask, weakness list, click-to-isolate |
 
-Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target when possible. It then inflates individual faces below the reference density, pinning dense vertices, smoothing the displacement, and applying small steps; it never deflates a face. If inflation would fold a triangle or fail to reduce the density spread, that step is rejected. Stage 5 may reduce all charts uniformly when the target does not fit and reports the achieved density. With `fitToAtlas` enabled it instead grows every chart uniformly until the atlas is full, and reports the resulting higher density. Charts with large concave silhouettes use rasterized silhouette packing, so their bounding boxes may overlap while their triangles do not. Simpler chart sets use MaxRects with four free-rectangle heuristics, four item orders, and optional 90-degree rotation.
+Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target when possible. Stage 5 then inflates individual faces below the reference density, pinning dense vertices, smoothing the displacement, and applying small steps; it never shrinks a chart. If a step would fold a triangle, lower the minimum face density, or fail to reduce the spread, it is rejected and reported in the stage issues. Stage 6 may reduce all charts uniformly when the target does not fit and reports the achieved density. With `fitToAtlas` enabled it instead grows every chart uniformly until the atlas is full, and reports the resulting higher density. Charts with large concave silhouettes use rasterized silhouette packing, so their bounding boxes may overlap while their triangles do not. Simpler chart sets use MaxRects with four free-rectangle heuristics, four item orders, and optional 90-degree rotation.
 
 A closed chart cannot be flattened as a disk. Stage 2 finds a geodesic cut path, marks it as a seam, and resegments. The cut is shown in pink and counted in `cutsAdded`.
 
-When the input has UVs, the pipeline reuses its UV islands and existing flattening by default, then normalizes density and repacks them. This avoids destroying a usable artist layout. Use `--rewrap` in the CLI to ignore source UVs and generate new seams; models without UVs always use the automatic path.
+When the input has UVs, the pipeline reuses its UV islands and existing flattening by default, then normalizes density, inflates sparse faces, and repacks them. This avoids destroying a usable artist layout. Use `--rewrap` in the CLI to ignore source UVs and generate new seams; models without UVs always use the automatic path.
 
 ## CLI
 
@@ -126,7 +128,7 @@ Exit codes:
 
 `--dump-stages <dir>` writes:
 
-- `stage-01-condition.json` through `stage-06-validate.json` always.
+- `stage-01-condition.json` through `stage-07-validate.json` always.
 - `stage-03` onward: OBJ with that stage's UVs.
 - `stage-03` onward: SVG chart or atlas diagram. Pack and validate SVGs include padding outlines.
 
@@ -201,7 +203,7 @@ The desktop binary opens the app when launched without arguments. Any argument o
 ## Layout
 
 ```text
-src/lib/unwrap/      pipeline, segmentation, parameterization, density, packing, validation
+src/lib/unwrap/      pipeline, segmentation, parameterization, density, inflation, packing, validation
 src/lib/             model loading, viewport, atlas, metrics, demo mesh, worker
 src/ui/              app shell, step inspector, pure UI state helpers
 cli/                 shared CLI core and Node host

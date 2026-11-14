@@ -68,7 +68,8 @@ describe('unwrap config', () => {
 
   it('orders the stages', () => {
     expect(stageIndex('condition')).toBe(0);
-    expect(stageIndex('pack')).toBe(4);
-    expect(stageIndex('validate')).toBe(5);
+    expect(stageIndex('inflate')).toBe(4);
+    expect(stageIndex('pack')).toBe(5);
+    expect(stageIndex('validate')).toBe(6);
   });
 });

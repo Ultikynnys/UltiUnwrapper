@@ -39,6 +39,7 @@ const STAGE_DESCRIPTIONS: Record<StageId, string> = {
   segment: 'Find seams and split the mesh into charts.',
   parameterize: 'Solve per-chart UVs and measure angle and area distortion.',
   normalize: 'Scale every chart toward the target texel density.',
+  inflate: 'Inflate low-density faces with a smooth falloff; dense faces stay fixed.',
   pack: 'Place charts into the atlas and report occupancy.',
   validate: 'Rasterize overlap and rank the weakest charts.',
 };
@@ -423,7 +424,7 @@ export class App {
     this.runFailure = null;
     this.busy = false;
     this.progress = null;
-    this.selectedStage = 5;
+    this.selectedStage = STAGE_ORDER.length - 1;
     this.selectedChart = null;
     this.viewModeValue = 'overlap';
     this.render();
@@ -468,7 +469,7 @@ export class App {
   }
 
   private focusWeakness(chart: number, kind: WeaknessKind): void {
-    this.selectedStage = 5;
+    this.selectedStage = STAGE_ORDER.length - 1;
     this.selectedChart = chart;
     this.viewModeValue = weaknessViewMode(kind);
     this.render();
