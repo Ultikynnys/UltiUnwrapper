@@ -14,8 +14,10 @@
 //   node scripts/build-version.mjs --count    print the raw commit count
 //   node scripts/build-version.mjs --count 42 print a count for tests/previews
 import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const BASE_MAJOR = 0;
 export const BASE_MINOR = 1;
@@ -30,6 +32,7 @@ export function versionFromCount(count) {
 export function buildCount() {
   try {
     const counted = execFileSync('git', ['rev-list', '--count', 'HEAD'], {
+      cwd: REPO_ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();

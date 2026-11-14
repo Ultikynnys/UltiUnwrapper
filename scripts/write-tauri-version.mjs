@@ -6,9 +6,13 @@
 // `--config`, locally and in CI.
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const version = execFileSync('node', ['scripts/build-version.mjs'], {
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const version = execFileSync('node', [resolve(root, 'scripts/build-version.mjs')], {
+  cwd: root,
   encoding: 'utf8',
 }).trim();
-writeFileSync('src-tauri/tauri.version.json', `${JSON.stringify({ version }, null, 2)}\n`);
+writeFileSync(resolve(root, 'src-tauri/tauri.version.json'), `${JSON.stringify({ version }, null, 2)}\n`);
 console.log(`Wrote src-tauri/tauri.version.json (version ${version})`);
