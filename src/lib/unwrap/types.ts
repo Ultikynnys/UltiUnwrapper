@@ -91,3 +91,30 @@ export type MeshTopology = {
   /** Edge indices touching each vertex. */
   vertexEdges: number[][];
 };
+
+/** One connected UV island. `localIndices` splits vertices along seams, so
+ * triangle corners that meet only at a cut are distinct chart vertices. */
+export type Chart = {
+  id: number;
+  /** Global triangle indices, ascending. */
+  triangles: Uint32Array;
+  /** 3 chart-local vertex indices per triangle. */
+  localIndices: Uint32Array;
+  /** Global welded vertex id for each chart-local vertex. */
+  localVertex: Uint32Array;
+  worldArea: number;
+  /** Edge ids on the chart border (model boundary, seam, or non-manifold). */
+  boundaryEdges: number[];
+  closed: boolean;
+};
+
+export type Segmentation = {
+  /** 1 for every chart border edge, including model boundaries. */
+  seamEdge: Uint8Array;
+  /** Edge ids added by closed-chart geodesic cuts. */
+  cutEdgeIndices: Uint32Array;
+  charts: Chart[];
+  chartOfTriangle: Uint32Array;
+  stats: StageStats;
+  issues: Issue[];
+};

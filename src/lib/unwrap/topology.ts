@@ -73,10 +73,3 @@ export function edgeLength(mesh: ConditionedMesh, edge: MeshEdge): number {
   const dz = mesh.positions[edge.b * 3 + 2] - mesh.positions[edge.a * 3 + 2];
   return Math.hypot(dx, dy, dz);
 }
-
-/** Adjacent triangles of an interior edge, or null when it is not a clean
- * two-triangle edge. */
-export function adjacentTriangles(edge: MeshEdge): [number, number] | null {
-  if (edge.triangles.length !== 2) return null;
-  return [edge.triangles[0], edge.triangles[1]];
-}
