@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-cli/
+coverage/
+.reasonix/
+*.log
+# Editor backup files (foo.png~, foo.ts~, ...)
+*~
+.DS_Store
+Thumbs.db
+src-tauri/target/
+src-tauri/gen/
+src-tauri/tauri.version.json

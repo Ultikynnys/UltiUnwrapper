@@ -1,0 +1,29 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "UltiUnwrapper",
+  "version": "0.0.0",
+  "identifier": "com.ultikynnys.ultiunwrapper",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "shortDescription": "Instrumented UV unwrapping studio",
+    "longDescription": "UltiUnwrapper runs a staged UV unwrap and keeps every stage's layout, seams, texel density, distortion, and overlap available for inspection. Processing stays on your machine.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

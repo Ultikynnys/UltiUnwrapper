@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="UltiUnwrapper mark">
+  <rect width="512" height="512" rx="96" fill="#171716"/>
+  <g transform="translate(128 128)">
+    <path d="M0 0h96v96H0z" fill="#f3f0e6"/>
+    <path d="M112 0h96v96h-96z" fill="#2dd4bf"/>
+    <path d="M0 112h96v96H0z" fill="#2dd4bf"/>
+    <path d="M112 112h96v96h-96z" fill="#f3f0e6"/>
+  </g>
+  <path d="M256 96v320" fill="none" stroke="#171716" stroke-width="12" stroke-dasharray="18 14" opacity=".7"/>
+  <path d="M96 256h320" fill="none" stroke="#171716" stroke-width="12" stroke-dasharray="18 14" opacity=".7"/>
+</svg>

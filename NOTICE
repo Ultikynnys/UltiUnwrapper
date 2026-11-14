@@ -1,0 +1,11 @@
+UltiUnwrapper includes portions derived from UltiPixelizer.
+
+UltiPixelizer
+https://github.com/Ultikynnys/UltiPixelizer
+Copyright (c) 2026 Ultikynnys
+Licensed under the MIT License.
+
+The derived portions are the model intake and viewport patterns, the UV
+stretch and texel density math, the UV coverage rasterizer, the CLI host
+split, the Tauri CLI bridge, and the git-count versioning scripts. See the
+source headers for the specific files.
