@@ -380,7 +380,7 @@ export function packAtlas(
     && hasConcaveChart;
   if (useConcave) {
     const grid = Math.min(1024, resolution);
-    const concave = packConcaveCharts(density.charts, {
+    let concave = packConcaveCharts(density.charts, {
       grid,
       resolution,
       padding,
@@ -388,6 +388,39 @@ export function packAtlas(
       scale: 1,
       fill: fitToAtlas,
     });
+    let fittedScale = 1;
+    if (!concave) {
+      let low = 1e-4;
+      let high = 1;
+      for (let iteration = 0; iteration < Math.min(10, iterations); iteration += 1) {
+        const mid = (low + high) / 2;
+        const attempt = packConcaveCharts(density.charts, {
+          grid,
+          resolution,
+          padding,
+          allowRotation: options.allowRotation,
+          scale: mid,
+          fill: false,
+        });
+        if (attempt) {
+          concave = attempt;
+          fittedScale = mid;
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+      if (concave && fitToAtlas) {
+        concave = packConcaveCharts(density.charts, {
+          grid,
+          resolution,
+          padding,
+          allowRotation: options.allowRotation,
+          scale: fittedScale,
+          fill: true,
+        }) ?? concave;
+      }
+    }
     if (concave) {
       best = {
         scale: concave.scale,
