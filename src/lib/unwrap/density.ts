@@ -155,8 +155,8 @@ function inflateChart(
     const next = new Float32Array(uvs.length);
     let nextArea = 0;
     for (let vertex = 0; vertex < count; vertex += 1) {
-      next[vertex * 2] = uvs[vertex * 2] + forceU[vertex] * 0.35;
-      next[vertex * 2 + 1] = uvs[vertex * 2 + 1] + forceV[vertex] * 0.35;
+      next[vertex * 2] = uvs[vertex * 2] + forceU[vertex] * 0.1;
+      next[vertex * 2 + 1] = uvs[vertex * 2 + 1] + forceV[vertex] * 0.1;
     }
     let valid = true;
     for (let local = 0; local < chart.triangles.length; local += 1) {
@@ -175,8 +175,16 @@ function inflateChart(
       }
       nextArea += Math.abs(area);
     }
-    const nextSpread = spread(chartFaceDensities(chart, face, resolution, next));
-    if (!valid || nextArea <= totalArea + EPSILON || nextSpread >= currentSpread - 1e-9) break;
+    const nextFaceDensities = chartFaceDensities(chart, face, resolution, next);
+    let deflated = false;
+    for (let local = 0; local < nextFaceDensities.length; local += 1) {
+      if (nextFaceDensities[local] < faceDensities[local] - 1e-9) {
+        deflated = true;
+        break;
+      }
+    }
+    const nextSpread = spread(nextFaceDensities);
+    if (!valid || deflated || nextArea <= totalArea + EPSILON || nextSpread >= currentSpread - 1e-9) break;
     uvs = next;
     totalArea = nextArea;
     currentSpread = nextSpread;
