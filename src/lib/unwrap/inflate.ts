@@ -23,9 +23,10 @@ type InflatePass = {
   attempted: boolean;
 };
 
-/** Inflates the lowest-density face repeatedly with a small outward step.
- * Accepted steps are those that grow that face without folding the chart;
- * rejected faces are skipped and the next-smallest face is tried. */
+/** Scales every triangle below the reference density around its own UV
+ * centroid. Each accepted step raises that triangle without folding the chart
+ * or increasing the maximum density, and passes repeat until no triangle can
+ * grow. */
 function inflateChart(
   chart: ChartUv,
   face: FaceGeometry,
@@ -54,101 +55,92 @@ function inflateChart(
   let maxFactor = 1;
   let iterations = 0;
   let attempted = false;
-  const failed = new Uint8Array(chart.triangles.length);
   const areaScale = (reference * reference) / (resolution * resolution);
-  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
-    const forceU = new Float32Array(count);
-    const forceV = new Float32Array(count);
+  for (let pass = 0; pass < maxIterations; pass += 1) {
     const faceDensities = chartFaceDensities(chart, face, resolution, uvs);
-    let currentMin = Infinity;
-    for (const density of faceDensities) {
-      if (density > EPSILON) currentMin = Math.min(currentMin, density);
-    }
-    if (currentMin >= reference * 0.995) break;
-    let lowest = -1;
-    let lowestDensity = Infinity;
+    const affected: number[] = [];
     for (let local = 0; local < chart.triangles.length; local += 1) {
-      if (failed[local]) continue;
-      if (faceDensities[local] > EPSILON && faceDensities[local] < lowestDensity) {
-        lowestDensity = faceDensities[local];
-        lowest = local;
+      if (faceDensities[local] > EPSILON && faceDensities[local] < reference * 0.995) {
+        affected.push(local);
       }
     }
-    if (lowest < 0) break;
-    const local = lowest;
-    const a = chart.localIndices[local * 3] * 2;
-    const b = chart.localIndices[local * 3 + 1] * 2;
-    const c = chart.localIndices[local * 3 + 2] * 2;
-    const area = Math.abs(signedTriangleArea2D(
-      uvs[a], uvs[a + 1],
-      uvs[b], uvs[b + 1],
-      uvs[c], uvs[c + 1],
-    ));
-    const targetArea = face.areas[chart.triangles[local]] * areaScale;
-    if (!(area > EPSILON) || !(targetArea > area)) {
-      failed[local] = 1;
-      continue;
+    if (affected.length === 0) break;
+    affected.sort((a, b) => faceDensities[a] - faceDensities[b]);
+    let currentMin = Infinity;
+    let currentMax = 0;
+    for (const density of faceDensities) {
+      if (density > EPSILON) currentMin = Math.min(currentMin, density);
+      if (density > currentMax) currentMax = density;
     }
-    const factor = Math.min(maxInflation, Math.sqrt(targetArea / area));
-    if (factor <= 1.001) break;
-    attempted = true;
-    const cx = (uvs[a] + uvs[b] + uvs[c]) / 3;
-    const cy = (uvs[a + 1] + uvs[b + 1] + uvs[c + 1]) / 3;
-    for (let corner = 0; corner < 3; corner += 1) {
-      const vertex = chart.localIndices[local * 3 + corner];
-      forceU[vertex] += (uvs[vertex * 2] - cx) * (factor - 1);
-      forceV[vertex] += (uvs[vertex * 2 + 1] - cy) * (factor - 1);
-    }
-    const localMax = factor;
-    const next = new Float32Array(uvs.length);
-    for (let vertex = 0; vertex < count; vertex += 1) {
-      next[vertex * 2] = uvs[vertex * 2] + forceU[vertex] * 0.02;
-      next[vertex * 2 + 1] = uvs[vertex * 2 + 1] + forceV[vertex] * 0.02;
-    }
-    let valid = true;
-    for (let local = 0; local < chart.triangles.length; local += 1) {
+    let accepted = 0;
+    for (const local of affected) {
       const a = chart.localIndices[local * 3] * 2;
       const b = chart.localIndices[local * 3 + 1] * 2;
       const c = chart.localIndices[local * 3 + 2] * 2;
-      const area = signedTriangleArea2D(
-        next[a], next[a + 1],
-        next[b], next[b + 1],
-        next[c], next[c + 1],
-      );
-      const sign = area > EPSILON ? 1 : area < -EPSILON ? -1 : 0;
-      if (initialSigns[local] !== 0 && sign !== initialSigns[local]) {
-        valid = false;
-        break;
+      const density = faceDensities[local];
+      if (!(density > EPSILON) || density >= reference * 0.995) continue;
+      const area = Math.abs(signedTriangleArea2D(
+        uvs[a], uvs[a + 1],
+        uvs[b], uvs[b + 1],
+        uvs[c], uvs[c + 1],
+      ));
+      const targetArea = face.areas[chart.triangles[local]] * areaScale;
+      if (!(area > EPSILON) || !(targetArea > area)) continue;
+      attempted = true;
+      const factor = Math.min(maxInflation, Math.sqrt(targetArea / area));
+      const stepScale = 1 + (factor - 1) * 0.2;
+      const cx = (uvs[a] + uvs[b] + uvs[c]) / 3;
+      const cy = (uvs[a + 1] + uvs[b + 1] + uvs[c + 1]) / 3;
+      const next = new Float32Array(uvs);
+      const vertices = [
+        chart.localIndices[local * 3],
+        chart.localIndices[local * 3 + 1],
+        chart.localIndices[local * 3 + 2],
+      ];
+      for (const vertex of vertices) {
+        next[vertex * 2] = cx + (uvs[vertex * 2] - cx) * stepScale;
+        next[vertex * 2 + 1] = cy + (uvs[vertex * 2 + 1] - cy) * stepScale;
       }
+      let valid = true;
+      for (let test = 0; test < chart.triangles.length; test += 1) {
+        const ta = chart.localIndices[test * 3] * 2;
+        const tb = chart.localIndices[test * 3 + 1] * 2;
+        const tc = chart.localIndices[test * 3 + 2] * 2;
+        const testArea = signedTriangleArea2D(
+          next[ta], next[ta + 1],
+          next[tb], next[tb + 1],
+          next[tc], next[tc + 1],
+        );
+        const sign = testArea > EPSILON ? 1 : testArea < -EPSILON ? -1 : 0;
+        if (initialSigns[test] !== 0 && sign !== initialSigns[test]) {
+          valid = false;
+          break;
+        }
+      }
+      if (!valid) continue;
+      const nextDensities = chartFaceDensities(chart, face, resolution, next);
+      let nextMin = Infinity;
+      let nextMax = 0;
+      for (const value of nextDensities) {
+        if (value > EPSILON) nextMin = Math.min(nextMin, value);
+        if (value > nextMax) nextMax = value;
+      }
+      if (!(nextDensities[local] > density + 1e-6)
+        || nextMin < currentMin - 1e-9
+        || nextMax > currentMax + 1e-6) continue;
+      uvs = next;
+      maxFactor = Math.max(maxFactor, factor);
+      iterations += 1;
+      accepted += 1;
     }
-    if (!valid) {
-      failed[local] = 1;
-      continue;
-    }
-    const nextFaceDensities = chartFaceDensities(chart, face, resolution, next);
-    let nextMin = Infinity;
-    for (const density of nextFaceDensities) {
-      if (density > EPSILON) nextMin = Math.min(nextMin, density);
-    }
-    const nextLocalArea = Math.abs(signedTriangleArea2D(
-      next[a], next[a + 1],
-      next[b], next[b + 1],
-      next[c], next[c + 1],
-    ));
-    if (nextLocalArea <= area + EPSILON || nextMin < currentMin - 1e-9) {
-      failed[local] = 1;
-      continue;
-    }
-    uvs = next;
-    maxFactor = Math.max(maxFactor, localMax);
-    iterations += 1;
+    if (accepted === 0) break;
   }
   return { uvs, iterations, maxFactor, attempted };
 }
 
 /** Inflation-only density pass. It runs after chart normalization and never
- * shrinks a chart; it raises the lowest-density face in each chart until the
- * average density or the iteration cap is reached. */
+ * shrinks a chart; it scales low-density triangles around their centers until
+ * they approach the average density or no safe scale remains. */
 export function inflateDensity(
   mesh: ConditionedMesh,
   normalized: DensityResult,
@@ -174,8 +166,13 @@ export function inflateDensity(
     bbox: { ...chart.bbox },
   }));
   const densitiesBefore: number[] = [];
+  const beforeByTriangle = new Float32Array(mesh.triangleCount);
   for (const chart of charts) {
-    densitiesBefore.push(...chartFaceDensities(chart, face, resolution));
+    const densities = chartFaceDensities(chart, face, resolution);
+    for (let local = 0; local < densities.length; local += 1) {
+      densitiesBefore.push(densities[local]);
+      beforeByTriangle[chart.triangles[local]] = densities[local];
+    }
   }
   let densitySum = 0;
   let densityCount = 0;
@@ -231,10 +228,24 @@ export function inflateDensity(
   const densitiesAfter: number[] = [];
   let uvAreaFraction = 0;
   let minimumAfter = Infinity;
-  for (const chart of charts) {
+  let inflatedFaces = 0;
+  let inflatedVertices = 0;
+  for (let chartIndex = 0; chartIndex < charts.length; chartIndex += 1) {
+    const chart = charts[chartIndex];
+    const beforeChart = normalized.charts[chartIndex];
+    const vertexCount = chart.uvs.length / 2;
+    for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+      if (beforeChart
+        && (Math.abs(beforeChart.uvs[vertex * 2] - chart.uvs[vertex * 2]) > 1e-9
+          || Math.abs(beforeChart.uvs[vertex * 2 + 1] - chart.uvs[vertex * 2 + 1]) > 1e-9)) {
+        inflatedVertices += 1;
+      }
+    }
     const densities = chartFaceDensities(chart, face, resolution);
-    for (const density of densities) {
-      if (density > EPSILON) minimumAfter = Math.min(minimumAfter, density);
+    for (let local = 0; local < densities.length; local += 1) {
+      const triangle = chart.triangles[local];
+      if (densities[local] > beforeByTriangle[triangle] + 1e-6) inflatedFaces += 1;
+      if (densities[local] > EPSILON) minimumAfter = Math.min(minimumAfter, densities[local]);
     }
     densitiesAfter.push(...densities);
     uvAreaFraction += chart.uvArea;
@@ -291,6 +302,8 @@ export function inflateDensity(
     densityP95: Number(arrays.summary.p95.toFixed(4)),
     attemptedCharts,
     inflatedCharts,
+    inflatedFaces,
+    inflatedVertices,
     inflationIterations,
     maxInflation: Number(maxInflationApplied.toFixed(4)),
     uvAreaFraction: Number(uvAreaFraction.toFixed(6)),

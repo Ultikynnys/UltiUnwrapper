@@ -35,7 +35,7 @@ export function stageHeadline(stage: StageSnapshot): string {
     case 'normalize':
       return `${fixed(stage.stats.densityP50, 0)} px/unit`;
     case 'inflate':
-      return `${count(stage.stats.inflatedCharts)} inflated`;
+      return `${count(stage.stats.inflatedFaces)} faces`;
     case 'pack':
       return `${percent(stage.stats.occupancy, 0)} packed`;
     case 'validate':
@@ -79,8 +79,8 @@ export function stageCards(stage: StageSnapshot): MetricCard[] {
       return [
         { label: 'Before spread', value: percent(stage.stats.densityBeforeSpread, 2) },
         { label: 'After spread', value: percent(stage.stats.densityAfterSpread, 2) },
-        { label: 'Inflated', value: count(stage.stats.inflatedCharts), hint: `${count(stage.stats.attemptedCharts)} attempted` },
-        { label: 'Steps', value: count(stage.stats.inflationIterations), hint: 'max per chart' },
+        { label: 'Inflated faces', value: count(stage.stats.inflatedFaces), hint: `${count(stage.stats.inflatedVertices)} verts` },
+        { label: 'Steps', value: count(stage.stats.inflationIterations), hint: 'triangle scales' },
       ];
     case 'pack':
       return [
