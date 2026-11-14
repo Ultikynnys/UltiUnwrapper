@@ -104,6 +104,40 @@ function chartBoundaryLists(
   return lists;
 }
 
+function analyzeBoundary(
+  boundaryEdges: number[],
+  topology: MeshTopology,
+): { count: number; componentOf: Map<number, number> } {
+  const componentOf = new Map<number, number>();
+  if (boundaryEdges.length === 0) return { count: 0, componentOf };
+  const adjacency = new Map<number, number[]>();
+  for (const edgeIndex of boundaryEdges) {
+    const edge = topology.edges[edgeIndex];
+    const a = adjacency.get(edge.a);
+    if (a) a.push(edge.b);
+    else adjacency.set(edge.a, [edge.b]);
+    const b = adjacency.get(edge.b);
+    if (b) b.push(edge.a);
+    else adjacency.set(edge.b, [edge.a]);
+  }
+  let count = 0;
+  for (const start of adjacency.keys()) {
+    if (componentOf.has(start)) continue;
+    const stack = [start];
+    componentOf.set(start, count);
+    while (stack.length > 0) {
+      const vertex = stack.pop()!;
+      for (const neighbor of adjacency.get(vertex) ?? []) {
+        if (componentOf.has(neighbor)) continue;
+        componentOf.set(neighbor, count);
+        stack.push(neighbor);
+      }
+    }
+    count += 1;
+  }
+  return { count, componentOf };
+}
+
 function buildLocalVertices(
   mesh: ConditionedMesh,
   topology: MeshTopology,
@@ -204,6 +238,7 @@ export function segmentCharts(
     let worldArea = 0;
     for (const triangle of triangles) worldArea += face.areas[triangle];
     const local = buildLocalVertices(mesh, topology, seamEdge, chartOfTriangle, id, indices);
+    const boundary = analyzeBoundary(boundaries[id], topology);
     return {
       id,
       triangles: indices,
@@ -211,6 +246,7 @@ export function segmentCharts(
       localVertex: local.localVertex,
       worldArea,
       boundaryEdges: boundaries[id],
+      boundaryComponents: boundary.count,
       closed: boundaries[id].length === 0,
     };
   });
@@ -302,11 +338,78 @@ export function findClosedChartCut(
   return path;
 }
 
+/** Connects two separate boundary loops of an open chart. The shortest
+ * interior path between the loops turns an annulus-like chart into a disk. */
+export function findBoundaryCut(
+  mesh: ConditionedMesh,
+  topology: MeshTopology,
+  chart: Chart,
+  seamEdge: Uint8Array,
+): number[] {
+  if (chart.closed || chart.boundaryComponents <= 1) return [];
+  const boundary = analyzeBoundary(chart.boundaryEdges, topology);
+  if (boundary.count <= 1) return [];
+  const chartTriangles = new Set<number>(chart.triangles);
+  const sources: number[] = [];
+  for (const [vertex, component] of boundary.componentOf) {
+    if (component === 0) sources.push(vertex);
+  }
+  if (sources.length === 0) return [];
+
+  const distances = new Float64Array(mesh.vertexCount).fill(Infinity);
+  const parentVertex = new Int32Array(mesh.vertexCount).fill(-1);
+  const parentEdge = new Int32Array(mesh.vertexCount).fill(-1);
+  const visited = new Uint8Array(mesh.vertexCount);
+  const heap = new MinHeap();
+  for (const source of sources) {
+    distances[source] = 0;
+    heap.push(source, 0);
+  }
+  let target = -1;
+  while (heap.size > 0) {
+    const entry = heap.pop()!;
+    if (visited[entry.vertex]) continue;
+    if (entry.distance > distances[entry.vertex]) continue;
+    visited[entry.vertex] = 1;
+    const component = boundary.componentOf.get(entry.vertex);
+    if (component !== undefined && component !== 0 && entry.distance > 0) {
+      target = entry.vertex;
+      break;
+    }
+    for (const edgeIndex of topology.vertexEdges[entry.vertex]) {
+      const edge = topology.edges[edgeIndex];
+      if (edge.boundary || edge.nonManifold || seamEdge[edgeIndex]) continue;
+      if (edge.triangles.length !== 2) continue;
+      if (!chartTriangles.has(edge.triangles[0]) || !chartTriangles.has(edge.triangles[1])) continue;
+      const neighbor = edge.a === entry.vertex ? edge.b : edge.a;
+      if (visited[neighbor]) continue;
+      const next = entry.distance + edgeLength(mesh, edge);
+      if (next < distances[neighbor] - 1e-12) {
+        distances[neighbor] = next;
+        parentVertex[neighbor] = entry.vertex;
+        parentEdge[neighbor] = edgeIndex;
+        heap.push(neighbor, next);
+      }
+    }
+  }
+  if (target < 0) return [];
+
+  const path: number[] = [];
+  let vertex = target;
+  while (parentEdge[vertex] >= 0) {
+    path.push(parentEdge[vertex]);
+    vertex = parentVertex[vertex];
+    if (path.length > mesh.vertexCount) return [];
+  }
+  return path;
+}
+
 export type CutResult = {
   seamEdge: Uint8Array;
   cutEdgeIndices: Uint32Array;
   cutLength: number;
   closedBefore: number;
+  nonDiskBefore: number;
   cutsAdded: number;
   issues: Issue[];
 };
@@ -325,22 +428,30 @@ export function cutClosedCharts(
   const issues: Issue[] = [];
   const maxRounds = Math.max(1, options.maxClosedChartCuts ?? 3);
   let closedBefore = 0;
+  let nonDiskBefore = 0;
   let cutLength = 0;
 
   for (let round = 0; round < maxRounds; round += 1) {
     const current = segmentCharts(mesh, topology, working, face);
-    const closed = current.charts.filter((chart) => chart.closed);
-    if (round === 0) closedBefore = closed.length;
-    if (closed.length === 0) break;
+    const needsCut = current.charts.filter((chart) => chart.closed || chart.boundaryComponents > 1);
+    if (round === 0) {
+      closedBefore = current.charts.filter((chart) => chart.closed).length;
+      nonDiskBefore = needsCut.length;
+    }
+    if (needsCut.length === 0) break;
     let addedThisRound = 0;
-    for (const chart of closed) {
-      const path = findClosedChartCut(mesh, topology, chart, working);
+    for (const chart of needsCut) {
+      const path = chart.closed
+        ? findClosedChartCut(mesh, topology, chart, working)
+        : findBoundaryCut(mesh, topology, chart, working);
       if (path.length === 0) {
         issues.push({
           stage: 'segment',
           severity: 'warn',
-          code: 'closed-chart-cut-failed',
-          message: `Chart ${chart.id} is closed and no cut path could be found.`,
+          code: chart.closed ? 'closed-chart-cut-failed' : 'non-disk-cut-failed',
+          message: chart.closed
+            ? `Chart ${chart.id} is closed and no cut path could be found.`
+            : `Chart ${chart.id} has ${chart.boundaryComponents} boundary loops and no connection path could be found.`,
           chart: chart.id,
         });
         continue;
@@ -361,6 +472,7 @@ export function cutClosedCharts(
     cutEdgeIndices: new Uint32Array(cutEdges),
     cutLength,
     closedBefore,
+    nonDiskBefore,
     cutsAdded: cutEdges.length,
     issues,
   };
@@ -388,14 +500,16 @@ export function segmentMesh(
     chartAreaMin = Math.min(chartAreaMin, chart.worldArea);
     chartAreaMax = Math.max(chartAreaMax, chart.worldArea);
   }
-  const remainingClosed = finalCharts.charts.filter((chart) => chart.closed).length;
-  if (remainingClosed > 0) {
+  const remainingNonDisk = finalCharts.charts.filter(
+    (chart) => chart.closed || chart.boundaryComponents > 1,
+  ).length;
+  if (remainingNonDisk > 0) {
     issues.push({
       stage: 'segment',
       severity: 'warn',
-      code: 'closed-charts-remain',
-      message: `${remainingClosed} closed chart${remainingClosed === 1 ? '' : 's'} could not be opened.`,
-      value: remainingClosed,
+      code: 'non-disk-charts-remain',
+      message: `${remainingNonDisk} chart${remainingNonDisk === 1 ? '' : 's'} still have no disk topology.`,
+      value: remainingNonDisk,
     });
   }
   if (finalCharts.charts.length === 0) {
@@ -426,6 +540,7 @@ export function segmentMesh(
     materialSeams: seams.materialSeamCount,
     dihedralSeams: seams.dihedralSeamCount,
     closedChartsBeforeCuts: cuts.closedBefore,
+    nonDiskChartsBeforeCuts: cuts.nonDiskBefore,
     cutsAdded: cuts.cutsAdded,
     chartTrianglesMin: Number.isFinite(chartTrianglesMin) ? chartTrianglesMin : 0,
     chartTrianglesMax,

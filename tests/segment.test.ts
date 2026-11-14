@@ -63,10 +63,12 @@ describe('chart segmentation', () => {
   it('separates a cylinder side from its two caps', () => {
     const { result } = segment(makeCylinder(12, 1, 2));
     expect(result.charts).toHaveLength(3);
-    expect(result.stats.cutsAdded).toBe(0);
+    expect(result.stats.cutsAdded).toBeGreaterThan(0);
+    expect(result.stats.nonDiskChartsBeforeCuts).toBe(1);
     const sizes = result.charts.map((chart) => chart.triangles.length).sort((a, b) => a - b);
     expect(sizes).toEqual([12, 12, 24]);
     expect(result.charts.every((chart) => !chart.closed)).toBe(true);
+    expect(result.charts.every((chart) => chart.boundaryComponents === 1)).toBe(true);
   });
 
   it('cuts a closed sphere open along a geodesic path', () => {

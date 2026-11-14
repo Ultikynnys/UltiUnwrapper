@@ -105,6 +105,8 @@ export type Chart = {
   worldArea: number;
   /** Edge ids on the chart border (model boundary, seam, or non-manifold). */
   boundaryEdges: number[];
+  /** Connected components of the boundary graph; 0 means closed. */
+  boundaryComponents: number;
   closed: boolean;
 };
 
@@ -115,6 +117,46 @@ export type Segmentation = {
   cutEdgeIndices: Uint32Array;
   charts: Chart[];
   chartOfTriangle: Uint32Array;
+  stats: StageStats;
+  issues: Issue[];
+};
+
+export type ChartUv = {
+  chart: number;
+  /** Global triangle indices, aligned with `localIndices`. */
+  triangles: Uint32Array;
+  /** 3 chart-local vertex indices per triangle. */
+  localIndices: Uint32Array;
+  /** Global welded vertex id per chart-local vertex. */
+  localVertex: Uint32Array;
+  /** 2 floats per chart-local vertex. */
+  uvs: Float32Array;
+  worldArea: number;
+  uvArea: number;
+  bbox: { minU: number; minV: number; maxU: number; maxV: number };
+  solverIterations: number;
+  solverResidual: number;
+  solverConverged: boolean;
+  initialization: 'projection' | 'harmonic' | 'none';
+  fallback: boolean;
+};
+
+export type ParameterizeOptions = {
+  /** Relative residual target for the LSCM solve. */
+  tolerance?: number;
+  /** Hard cap on conjugate-gradient iterations. */
+  maxIterations?: number;
+  /** Fraction of flipped chart triangles that triggers the planar fallback. */
+  maxFlippedFraction?: number;
+};
+
+export type ParameterizeResult = {
+  charts: ChartUv[];
+  /** 6 floats per global triangle: u0,v0,u1,v1,u2,v2. */
+  triangleUvs: Float32Array;
+  angleDistortion: Float32Array;
+  areaDistortion: Float32Array;
+  flipped: Uint8Array;
   stats: StageStats;
   issues: Issue[];
 };
