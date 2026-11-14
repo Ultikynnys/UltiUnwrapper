@@ -1,7 +1,9 @@
 import './style.css';
+import { App } from './ui/app';
 import { renderShell } from './ui/shell';
 
-const app = document.querySelector<HTMLDivElement>('#app');
-if (!app) throw new Error('Application root not found.');
+const root = document.querySelector<HTMLDivElement>('#app');
+if (!root) throw new Error('Application root not found.');
 
-renderShell(app);
+renderShell(root);
+new App();

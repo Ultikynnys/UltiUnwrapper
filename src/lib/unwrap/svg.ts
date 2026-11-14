@@ -1,3 +1,4 @@
+import { chartColorCss } from './colors';
 import type { ChartPlacement, ChartUv } from './types';
 
 export type SvgOptions = {
@@ -7,11 +8,6 @@ export type SvgOptions = {
   size?: number;
   title?: string;
 };
-
-function chartColor(chart: number): string {
-  const hue = (chart * 137.508) % 360;
-  return `hsl(${hue.toFixed(1)} 62% 55%)`;
-}
 
 function escapeXml(value: string): string {
   return value
@@ -76,7 +72,7 @@ export function renderChartsSvg(charts: ChartUv[], options: SvgOptions = {}): st
       const b = chart.localIndices[triangle * 3 + 1];
       const c = chart.localIndices[triangle * 3 + 2];
       parts.push(
-        `<polygon points="${point(chart.uvs[a * 2], chart.uvs[a * 2 + 1])} ${point(chart.uvs[b * 2], chart.uvs[b * 2 + 1])} ${point(chart.uvs[c * 2], chart.uvs[c * 2 + 1])}" fill="${chartColor(chart.chart)}" fill-opacity="0.42" stroke="${chartColor(chart.chart)}" stroke-width="1"/>`,
+        `<polygon points="${point(chart.uvs[a * 2], chart.uvs[a * 2 + 1])} ${point(chart.uvs[b * 2], chart.uvs[b * 2 + 1])} ${point(chart.uvs[c * 2], chart.uvs[c * 2 + 1])}" fill="${chartColorCss(chart.chart)}" fill-opacity="0.42" stroke="${chartColorCss(chart.chart)}" stroke-width="1"/>`,
       );
     }
   }
