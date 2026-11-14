@@ -206,12 +206,13 @@ export type DensityResult = {
 
 export type ChartPlacement = {
   chart: number;
-  /** Inner chart rectangle in atlas texels, bottom-left origin. */
+  /** Chart bounds in atlas texels, bottom-left origin. Concave packing may
+   * make these bounds overlap while the chart triangles do not. */
   x: number;
   y: number;
   width: number;
   height: number;
-  rotation: 0 | 90;
+  rotation: 0 | 90 | 180 | 270;
 };
 
 export type PackedChart = ChartUv & {

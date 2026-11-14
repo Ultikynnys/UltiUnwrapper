@@ -265,7 +265,12 @@ export class Atlas2D {
     this.drawOverlap(context);
     const padding = this.state.stage?.atlas?.padding ?? 0;
     const resolution = this.state.stage?.atlas?.resolution ?? 1;
-    if (padding > 0 && resolution > 0) {
+    const placements = this.state.stage?.atlas?.placements ?? [];
+    const boundsOverlap = placements.some((a, i) => placements.slice(i + 1).some((b) => (
+      a.x < b.x + b.width && a.x + a.width > b.x
+      && a.y < b.y + b.height && a.y + a.height > b.y
+    )));
+    if (padding > 0 && resolution > 0 && !boundsOverlap) {
       context.strokeStyle = 'rgba(243, 240, 230, 0.35)';
       context.setLineDash([3, 3]);
       context.lineWidth = 1;

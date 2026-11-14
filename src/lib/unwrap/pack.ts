@@ -1,3 +1,4 @@
+import { packConcaveCharts, type ConcavePlacement } from './concavePack';
 import type { FaceGeometry } from './mesh';
 import { signedTriangleArea2D, summarize } from './metrics';
 import { rasterizeCoverage, type RasterTriangle } from './raster';
@@ -29,7 +30,16 @@ export type PackOptions = {
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Item = { chart: number; baseW: number; baseH: number };
-type Placement = { chart: number; x: number; y: number; w: number; h: number; rotation: 0 | 90 };
+type Placement = {
+  chart: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotation: 0 | 90 | 180 | 270;
+  /** Concave placements already carry inner content bounds. */
+  inner?: boolean;
+};
 
 function overlaps(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -293,6 +303,26 @@ function attemptPack(
   return { scale, placements, bboxOccupancy: bboxArea / (resolution * resolution) };
 }
 
+/** Union of the chart bounds. Concave placements may overlap their bounds, so
+ * summing rectangle areas would overstate atlas use. */
+function bboxUnionOccupancy(placements: ChartPlacement[], resolution: number): number {
+  const grid = Math.min(1024, Math.max(1, Math.round(resolution)));
+  const mask = new Uint8Array(grid * grid);
+  const factor = grid / resolution;
+  for (const placement of placements) {
+    const minX = Math.max(0, Math.floor(placement.x * factor));
+    const minY = Math.max(0, Math.floor(placement.y * factor));
+    const maxX = Math.min(grid, Math.ceil((placement.x + placement.width) * factor));
+    const maxY = Math.min(grid, Math.ceil((placement.y + placement.height) * factor));
+    for (let y = minY; y < maxY; y += 1) {
+      mask.fill(1, y * grid + minX, y * grid + maxX);
+    }
+  }
+  let covered = 0;
+  for (let index = 0; index < mask.length; index += 1) covered += mask[index];
+  return covered / (grid * grid);
+}
+
 /** Packs normalized-density charts with MaxRects. If the target density does
  * not fit, every chart is scaled by the same factor, so relative texel density
  * stays uniform and the achieved density is target * scale. */
@@ -330,27 +360,86 @@ export function packAtlas(
     };
   }
 
-  let best = attemptPack(density.charts, resolution, padding, options.allowRotation, 1);
-  let bestScale = 1;
   const iterations = options.fitIterations ?? 18;
   const fitToAtlas = Boolean(options.fitToAtlas) && density.charts.length <= 64;
-  if (best && fitToAtlas) {
-    let low = 1;
-    let high = 2;
-    let highAttempt = attemptPack(density.charts, resolution, padding, options.allowRotation, high);
-    let expansions = 0;
-    while (highAttempt && high < 8 && expansions < 3) {
-      low = high;
-      best = highAttempt;
-      bestScale = high;
-      high *= 2;
-      highAttempt = attemptPack(density.charts, resolution, padding, options.allowRotation, high);
-      expansions += 1;
+  let best: Attempt | null = null;
+  let bestScale = 1;
+  const hasConcaveChart = density.charts.some((chart) => {
+    const width = chart.bbox.maxU - chart.bbox.minU;
+    const height = chart.bbox.maxV - chart.bbox.minV;
+    const boundsArea = width * height;
+    return boundsArea > 1e-12 && chart.uvArea / boundsArea < 0.85;
+  });
+  const maxChartTriangles = density.charts.reduce(
+    (max, chart) => Math.max(max, chart.triangles.length),
+    0,
+  );
+  const useConcave = resolution >= 64
+    && density.charts.length <= 16
+    && maxChartTriangles >= 512
+    && hasConcaveChart;
+  if (useConcave) {
+    const grid = Math.min(1024, resolution);
+    const concave = packConcaveCharts(density.charts, {
+      grid,
+      resolution,
+      padding,
+      allowRotation: options.allowRotation,
+      scale: 1,
+      fill: fitToAtlas,
+    });
+    if (concave) {
+      best = {
+        scale: concave.scale,
+        placements: concave.placements.map((placement: ConcavePlacement): Placement => ({
+          chart: placement.chart,
+          x: placement.x,
+          y: placement.y,
+          w: placement.width,
+          h: placement.height,
+          rotation: placement.rotation,
+          inner: true,
+        })),
+        bboxOccupancy: 0,
+      };
+      bestScale = concave.scale;
     }
-    if (highAttempt) {
-      best = highAttempt;
-      bestScale = high;
-    } else {
+  }
+  if (!best) {
+    best = attemptPack(density.charts, resolution, padding, options.allowRotation, 1);
+    if (best && fitToAtlas) {
+      let low = 1;
+      let high = 2;
+      let highAttempt = attemptPack(density.charts, resolution, padding, options.allowRotation, high);
+      let expansions = 0;
+      while (highAttempt && high < 8 && expansions < 3) {
+        low = high;
+        best = highAttempt;
+        bestScale = high;
+        high *= 2;
+        highAttempt = attemptPack(density.charts, resolution, padding, options.allowRotation, high);
+        expansions += 1;
+      }
+      if (highAttempt) {
+        best = highAttempt;
+        bestScale = high;
+      } else {
+        for (let iteration = 0; iteration < iterations; iteration += 1) {
+          const mid = (low + high) / 2;
+          const attempt = attemptPack(density.charts, resolution, padding, options.allowRotation, mid);
+          if (attempt) {
+            best = attempt;
+            bestScale = mid;
+            low = mid;
+          } else {
+            high = mid;
+          }
+        }
+      }
+    } else if (!best) {
+      const minimumScale = 1e-4;
+      let low = minimumScale;
+      let high = 1;
       for (let iteration = 0; iteration < iterations; iteration += 1) {
         const mid = (low + high) / 2;
         const attempt = attemptPack(density.charts, resolution, padding, options.allowRotation, mid);
@@ -361,21 +450,6 @@ export function packAtlas(
         } else {
           high = mid;
         }
-      }
-    }
-  } else if (!best) {
-    const minimumScale = 1e-4;
-    let low = minimumScale;
-    let high = 1;
-    for (let iteration = 0; iteration < iterations; iteration += 1) {
-      const mid = (low + high) / 2;
-      const attempt = attemptPack(density.charts, resolution, padding, options.allowRotation, mid);
-      if (attempt) {
-        best = attempt;
-        bestScale = mid;
-        low = mid;
-      } else {
-        high = mid;
       }
     }
   }
@@ -402,6 +476,16 @@ export function packAtlas(
   }
   bestScale = best.scale;
   const placements: ChartPlacement[] = best.placements.map((placement) => {
+    if (placement.inner) {
+      return {
+        chart: placement.chart,
+        x: placement.x,
+        y: placement.y,
+        width: Math.max(1, placement.w),
+        height: Math.max(1, placement.h),
+        rotation: placement.rotation,
+      };
+    }
     const innerWidth = Math.max(1, placement.w - padding * 2);
     const innerHeight = Math.max(1, placement.h - padding * 2);
     return {
@@ -414,6 +498,7 @@ export function packAtlas(
     };
   });
 
+  const bboxOccupancy = bboxUnionOccupancy(placements, resolution);
   const packedByChart = new Map<number, Placement>();
   for (const placement of best.placements) packedByChart.set(placement.chart, placement);
   const innerByChart = new Map<number, ChartPlacement>();
@@ -428,6 +513,7 @@ export function packAtlas(
     const innerX = placement.x;
     const innerY = placement.y;
     const baseWidth = chart.bbox.maxU - chart.bbox.minU;
+    const baseHeight = chart.bbox.maxV - chart.bbox.minV;
     const uvs = new Float32Array(chart.uvs.length);
     let minU = Infinity;
     let minV = Infinity;
@@ -441,6 +527,12 @@ export function packAtlas(
       if (placement.rotation === 90) {
         atlasU = (innerX + localV * resolution * bestScale) / resolution;
         atlasV = (innerY + (baseWidth - localU) * resolution * bestScale) / resolution;
+      } else if (placement.rotation === 180) {
+        atlasU = (innerX + (baseWidth - localU) * resolution * bestScale) / resolution;
+        atlasV = (innerY + (baseHeight - localV) * resolution * bestScale) / resolution;
+      } else if (placement.rotation === 270) {
+        atlasU = (innerX + (baseHeight - localV) * resolution * bestScale) / resolution;
+        atlasV = (innerY + localU * resolution * bestScale) / resolution;
       } else {
         atlasU = (innerX + localU * resolution * bestScale) / resolution;
         atlasV = (innerY + localV * resolution * bestScale) / resolution;
@@ -536,7 +628,7 @@ export function packAtlas(
       threshold: minOccupancy,
     });
   }
-  if (options.allowRotation && placements.some((placement) => placement.rotation === 90)) {
+  if (options.allowRotation && placements.some((placement) => placement.rotation !== 0)) {
     issues.push({
       stage: 'pack',
       severity: 'info',
@@ -555,8 +647,8 @@ export function packAtlas(
     achievedDensity: Number(achievedTexelDensity.toFixed(4)),
     densityP50: Number(densitySummary.p50.toFixed(4)),
     occupancy: Number(occupancy.toFixed(6)),
-    bboxOccupancy: Number(best.bboxOccupancy.toFixed(6)),
-    rotatedCharts: placements.filter((placement) => placement.rotation === 90).length,
+    bboxOccupancy: Number(bboxOccupancy.toFixed(6)),
+    rotatedCharts: placements.filter((placement) => placement.rotation !== 0).length,
   };
 
   return {
@@ -567,7 +659,7 @@ export function packAtlas(
     achievedTexelDensity,
     faceTexelDensity,
     occupancy,
-    bboxOccupancy: best.bboxOccupancy,
+    bboxOccupancy,
     stats,
     issues,
   };

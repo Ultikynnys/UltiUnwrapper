@@ -66,7 +66,7 @@ Click a chart in either pane to isolate it. Click empty space or use `Clear char
 
 ### Run settings
 
-Atlas resolution, padding, seam angle, target texel density, 90-degree rotation, and split-by-object are editable in the inspector. Settings apply on the next `Unwrap` run and are marked as pending until then.
+Atlas resolution, padding, seam angle, target texel density, 90-degree rotation, fill-atlas, and split-by-object are editable in the inspector. Settings apply on the next `Unwrap` run and are marked as pending until then.
 
 ## Stages
 
@@ -79,7 +79,7 @@ Atlas resolution, padding, seam angle, target texel density, 90-degree rotation,
 | 5 | Pack | MaxRects packing with padding, optional 90-degree rotation, binary-search fit scaling | Placements, atlas UVs, occupancy, achieved density | Atlas, padding outlines, occupancy, checker |
 | 6 | Validate | Interior raster overlap, percentile metrics, weakness ranking, pass/warn/error | Overlap mask, ranked weaknesses, summary | Overlap mask, weakness list, click-to-isolate |
 
-Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target when possible. Stage 5 may reduce all charts uniformly when the target does not fit and reports the achieved density. With `fitToAtlas` enabled it instead grows every chart uniformly until the atlas is full, and reports the resulting higher density. The packer runs MaxRects with four free-rectangle heuristics, four item orders, and optional 90-degree rotation, then keeps the layout with the smallest footprint.
+Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target when possible. Stage 5 may reduce all charts uniformly when the target does not fit and reports the achieved density. With `fitToAtlas` enabled it instead grows every chart uniformly until the atlas is full, and reports the resulting higher density. Charts with large concave silhouettes use rasterized silhouette packing, so their bounding boxes may overlap while their triangles do not. Simpler chart sets use MaxRects with four free-rectangle heuristics, four item orders, and optional 90-degree rotation.
 
 A closed chart cannot be flattened as a disk. Stage 2 finds a geodesic cut path, marks it as a seam, and resegments. The cut is shown in pink and counted in `cutsAdded`.
 

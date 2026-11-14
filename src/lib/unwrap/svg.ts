@@ -78,12 +78,19 @@ export function renderChartsSvg(charts: ChartUv[], options: SvgOptions = {}): st
   }
   if (atlas && options.placements) {
     const resolution = options.atlasResolution ?? 2048;
-    for (const placement of options.placements) {
-      const x = (placement.x / resolution) * size;
-      const y = (1 - (placement.y + placement.height) / resolution) * size;
-      const w = (placement.width / resolution) * size;
-      const h = (placement.height / resolution) * size;
-      parts.push(`<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" fill="none" stroke="#f3f0e6" stroke-opacity="0.5" stroke-dasharray="4 4"/>`);
+    const placements = options.placements;
+    const boundsOverlap = placements.some((a, i) => placements.slice(i + 1).some((b) => (
+      a.x < b.x + b.width && a.x + a.width > b.x
+      && a.y < b.y + b.height && a.y + a.height > b.y
+    )));
+    if (!boundsOverlap) {
+      for (const placement of placements) {
+        const x = (placement.x / resolution) * size;
+        const y = (1 - (placement.y + placement.height) / resolution) * size;
+        const w = (placement.width / resolution) * size;
+        const h = (placement.height / resolution) * size;
+        parts.push(`<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" fill="none" stroke="#f3f0e6" stroke-opacity="0.5" stroke-dasharray="4 4"/>`);
+      }
     }
   }
   parts.push('</svg>');
