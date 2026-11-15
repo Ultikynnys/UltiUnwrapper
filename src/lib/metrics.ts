@@ -34,8 +34,8 @@ export function stageHeadline(stage: StageSnapshot): string {
       return `p95 ${fixed(stage.stats.angleP95, 1)} deg`;
     case 'normalize':
       return `${fixed(stage.stats.densityP50, 0)} px/unit`;
-    case 'inflate':
-      return `${count(stage.stats.inflatedFaces)} faces`;
+    case 'relax':
+      return `${count(stage.stats.relaxedFaces)} faces`;
     case 'pack':
       return `${percent(stage.stats.occupancy, 0)} packed`;
     case 'validate':
@@ -75,13 +75,13 @@ export function stageCards(stage: StageSnapshot): MetricCard[] {
         { label: 'Spread', value: percent(stage.stats.densityAfterSpread, 2) },
         { label: 'Area needed', value: percent(stage.stats.requiredAreaFraction, 1), hint: 'before packing' },
       ];
-    case 'inflate':
+    case 'relax':
       return [
         { label: 'Before spread', value: percent(stage.stats.densityBeforeSpread, 2) },
         { label: 'After spread', value: percent(stage.stats.densityAfterSpread, 2) },
-        { label: 'Inflated faces', value: count(stage.stats.inflatedFaces), hint: `${count(stage.stats.inflatedVertices)} verts` },
-        { label: 'Smoothing', value: count(stage.stats.smoothingPasses), hint: 'distortion passes' },
-        { label: 'Angle', value: `${fixed(stage.stats.angleMeanAfter, 2)} deg`, hint: `was ${fixed(stage.stats.angleMeanBefore, 2)}` },
+        { label: 'Relaxed faces', value: count(stage.stats.relaxedFaces), hint: `${count(stage.stats.relaxedVertices)} verts` },
+        { label: 'Boid passes', value: count(stage.stats.boidPasses), hint: 'stops when difference rises' },
+        { label: 'Density diff', value: `${fixed(stage.stats.densityDifferenceBefore, 4)} -> ${fixed(stage.stats.densityDifferenceAfter, 4)}`, hint: 'mean distance from average' },
       ];
     case 'pack':
       return [

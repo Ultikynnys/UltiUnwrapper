@@ -11,7 +11,7 @@ export const VIEW_LABELS: Record<StageViewMode, string> = {
   density: 'Texel density',
   checker: 'Checker',
   overlap: 'Overlap',
-  densityDelta: 'Density change',
+  densityDelta: 'Relax change',
 };
 
 export const STAGE_VIEW_MODES: Record<StageId, StageViewMode[]> = {
@@ -19,7 +19,7 @@ export const STAGE_VIEW_MODES: Record<StageId, StageViewMode[]> = {
   segment: ['charts'],
   parameterize: ['distortion', 'area', 'flipped', 'charts', 'clay'],
   normalize: ['density', 'checker', 'area', 'charts'],
-  inflate: ['densityDelta', 'density', 'checker', 'area', 'charts'],
+  relax: ['densityDelta', 'density', 'checker', 'area', 'charts'],
   pack: ['checker', 'charts', 'area'],
   validate: ['overlap', 'density', 'distortion', 'area', 'flipped', 'charts'],
 };
@@ -29,7 +29,7 @@ export const STAGE_DEFAULT_VIEW: Record<StageId, StageViewMode> = {
   segment: 'charts',
   parameterize: 'distortion',
   normalize: 'density',
-  inflate: 'densityDelta',
+  relax: 'densityDelta',
   pack: 'checker',
   validate: 'overlap',
 };
@@ -37,7 +37,7 @@ export const STAGE_DEFAULT_VIEW: Record<StageId, StageViewMode> = {
 export function atlasModeFor(stage: StageSnapshot | null): AtlasMode {
   if (!stage || !stage.charts || stage.charts.length === 0) return 'inventory';
   if (stage.id === 'pack' || stage.id === 'validate') return 'atlas';
-  if (stage.id === 'parameterize' || stage.id === 'normalize' || stage.id === 'inflate') return 'gallery';
+  if (stage.id === 'parameterize' || stage.id === 'normalize' || stage.id === 'relax') return 'gallery';
   return 'inventory';
 }
 

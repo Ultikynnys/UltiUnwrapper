@@ -42,13 +42,13 @@ describe('stage view state', () => {
     expect(STAGE_DEFAULT_VIEW.segment).toBe('charts');
     expect(STAGE_DEFAULT_VIEW.parameterize).toBe('distortion');
     expect(STAGE_DEFAULT_VIEW.normalize).toBe('density');
-    expect(STAGE_DEFAULT_VIEW.inflate).toBe('densityDelta');
+    expect(STAGE_DEFAULT_VIEW.relax).toBe('densityDelta');
     expect(STAGE_DEFAULT_VIEW.pack).toBe('checker');
     expect(STAGE_DEFAULT_VIEW.validate).toBe('overlap');
     expect(STAGE_VIEW_MODES.validate).toContain('charts');
     expect(STAGE_VIEW_MODES.validate).toContain('flipped');
     expect(VIEW_LABELS.overlap).toBe('Overlap');
-    expect(VIEW_LABELS.densityDelta).toBe('Density change');
+    expect(VIEW_LABELS.densityDelta).toBe('Relax change');
   });
 
   it('chooses the atlas mode from the stage snapshot', () => {
@@ -57,7 +57,7 @@ describe('stage view state', () => {
     expect(atlasModeFor(stage('segment', null))).toBe('inventory');
     expect(atlasModeFor(stage('parameterize', [chart]))).toBe('gallery');
     expect(atlasModeFor(stage('normalize', [chart]))).toBe('gallery');
-    expect(atlasModeFor(stage('inflate', [chart]))).toBe('gallery');
+    expect(atlasModeFor(stage('relax', [chart]))).toBe('gallery');
     expect(atlasModeFor(stage('pack', [chart]))).toBe('atlas');
     expect(atlasModeFor(stage('validate', [chart]))).toBe('atlas');
     expect(atlasModeFor(stage('parameterize', null))).toBe('inventory');

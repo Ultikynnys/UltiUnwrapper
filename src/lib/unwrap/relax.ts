@@ -9,12 +9,25 @@ import type {
   ChartUv,
   ConditionedMesh,
   DensityResult,
-  InflateOptions,
   Issue,
+  RelaxOptions,
+  RelaxPassSample,
   StageStats,
 } from './types';
 
 const EPSILON = 1e-12;
+
+function densityDifference(values: number[], reference: number): number {
+  if (!(reference > EPSILON) || values.length === 0) return 0;
+  let total = 0;
+  let count = 0;
+  for (const value of values) {
+    if (!(value > EPSILON)) continue;
+    total += Math.abs(value / reference - 1);
+    count += 1;
+  }
+  return count > 0 ? total / count : 0;
+}
 
 function angleAt(
   ax: number, ay: number, az: number,
@@ -34,32 +47,36 @@ function angleAt(
   return (Math.acos(Math.min(1, Math.max(-1, cosine))) * 180) / Math.PI;
 }
 
-type InflatePass = {
+type RelaxPass = {
   uvs: Float32Array;
   iterations: number;
+  passes: number;
   smoothingPasses: number;
   angleBefore: number;
   angleAfter: number;
   maxFactor: number;
   attempted: boolean;
+  history: RelaxPassSample[];
+  differenceBefore: number;
+  differenceAfter: number;
 };
 
 /** Scales every triangle below the reference density around its own UV
  * centroid. Each accepted step raises that triangle without folding the chart
  * or increasing the maximum density, and passes repeat until no triangle can
  * grow. */
-function inflateChart(
+function relaxChart(
   mesh: ConditionedMesh,
   chart: ChartUv,
   face: FaceGeometry,
   resolution: number,
   reference: number,
-  maxInflation: number,
+  maxExpansion: number,
   maxIterations: number,
-): InflatePass {
+): RelaxPass {
   const count = chart.localVertex.length;
   if (count === 0 || reference <= 0) {
-    return { uvs: chart.uvs, iterations: 0, smoothingPasses: 0, angleBefore: 0, angleAfter: 0, maxFactor: 1, attempted: false };
+    return { uvs: chart.uvs, iterations: 0, passes: 0, smoothingPasses: 0, angleBefore: 0, angleAfter: 0, maxFactor: 1, attempted: false, history: [], differenceBefore: 0, differenceAfter: 0 };
   }
   const initialSigns = new Int8Array(chart.triangles.length);
   for (let local = 0; local < chart.triangles.length; local += 1) {
@@ -76,86 +93,124 @@ function inflateChart(
   let uvs = new Float32Array(chart.uvs);
   let maxFactor = 1;
   let iterations = 0;
+  let passes = 0;
   let attempted = false;
-  const areaScale = (reference * reference) / (resolution * resolution);
+  const history: RelaxPassSample[] = [];
+  const initialDensities = chartFaceDensities(chart, face, resolution, uvs);
+  const differenceBefore = densityDifference(initialDensities, reference);
+  const vertexTriangles: number[][] = Array.from({ length: count }, () => []);
+  for (let local = 0; local < chart.triangles.length; local += 1) {
+    vertexTriangles[chart.localIndices[local * 3]].push(local);
+    vertexTriangles[chart.localIndices[local * 3 + 1]].push(local);
+    vertexTriangles[chart.localIndices[local * 3 + 2]].push(local);
+  }
+  let currentDifference = differenceBefore;
   for (let pass = 0; pass < maxIterations; pass += 1) {
-    const faceDensities = chartFaceDensities(chart, face, resolution, uvs);
+    let passDensities = chartFaceDensities(chart, face, resolution, uvs);
     const affected: number[] = [];
     for (let local = 0; local < chart.triangles.length; local += 1) {
-      if (faceDensities[local] > EPSILON && faceDensities[local] < reference * 0.995) {
+      if (passDensities[local] > EPSILON && passDensities[local] < reference * 0.995) {
         affected.push(local);
       }
     }
     if (affected.length === 0) break;
-    affected.sort((a, b) => faceDensities[a] - faceDensities[b]);
-    let currentMin = Infinity;
-    let currentMax = 0;
-    for (const density of faceDensities) {
-      if (density > EPSILON) currentMin = Math.min(currentMin, density);
-      if (density > currentMax) currentMax = density;
-    }
+    affected.sort((a, b) => passDensities[a] - passDensities[b]);
+    const low = new Uint8Array(chart.triangles.length);
+    for (const local of affected) low[local] = 1;
+    const visited = new Uint8Array(chart.triangles.length);
     let accepted = 0;
-    for (const local of affected) {
-      const a = chart.localIndices[local * 3] * 2;
-      const b = chart.localIndices[local * 3 + 1] * 2;
-      const c = chart.localIndices[local * 3 + 2] * 2;
-      const density = faceDensities[local];
-      if (!(density > EPSILON) || density >= reference * 0.995) continue;
-      const area = Math.abs(signedTriangleArea2D(
-        uvs[a], uvs[a + 1],
-        uvs[b], uvs[b + 1],
-        uvs[c], uvs[c + 1],
-      ));
-      const targetArea = face.areas[chart.triangles[local]] * areaScale;
-      if (!(area > EPSILON) || !(targetArea > area)) continue;
-      attempted = true;
-      const factor = Math.min(maxInflation, Math.sqrt(targetArea / area));
-      const stepScale = 1 + (factor - 1) * 0.2;
-      const cx = (uvs[a] + uvs[b] + uvs[c]) / 3;
-      const cy = (uvs[a + 1] + uvs[b + 1] + uvs[c + 1]) / 3;
-      const next = new Float32Array(uvs);
-      const vertices = [
-        chart.localIndices[local * 3],
-        chart.localIndices[local * 3 + 1],
-        chart.localIndices[local * 3 + 2],
-      ];
-      for (const vertex of vertices) {
-        next[vertex * 2] = cx + (uvs[vertex * 2] - cx) * stepScale;
-        next[vertex * 2 + 1] = cy + (uvs[vertex * 2 + 1] - cy) * stepScale;
-      }
-      let valid = true;
-      for (let test = 0; test < chart.triangles.length; test += 1) {
-        const ta = chart.localIndices[test * 3] * 2;
-        const tb = chart.localIndices[test * 3 + 1] * 2;
-        const tc = chart.localIndices[test * 3 + 2] * 2;
-        const testArea = signedTriangleArea2D(
-          next[ta], next[ta + 1],
-          next[tb], next[tb + 1],
-          next[tc], next[tc + 1],
-        );
-        const sign = testArea > EPSILON ? 1 : testArea < -EPSILON ? -1 : 0;
-        if (initialSigns[test] !== 0 && sign !== initialSigns[test]) {
-          valid = false;
-          break;
+    for (const seed of affected) {
+      if (visited[seed]) continue;
+      const region: number[] = [];
+      const vertices = new Set<number>();
+      const queue = [seed];
+      visited[seed] = 1;
+      while (queue.length > 0) {
+        const local = queue.pop() as number;
+        region.push(local);
+        for (let corner = 0; corner < 3; corner += 1) {
+          const vertex = chart.localIndices[local * 3 + corner];
+          if (!vertices.has(vertex)) {
+            vertices.add(vertex);
+            for (const neighbor of vertexTriangles[vertex]) {
+              if (low[neighbor] && !visited[neighbor]) {
+                visited[neighbor] = 1;
+                queue.push(neighbor);
+              }
+            }
+          }
         }
       }
-      if (!valid) continue;
-      const nextDensities = chartFaceDensities(chart, face, resolution, next);
-      let nextMin = Infinity;
-      let nextMax = 0;
-      for (const value of nextDensities) {
-        if (value > EPSILON) nextMin = Math.min(nextMin, value);
-        if (value > nextMax) nextMax = value;
+      let regionDensity = 0;
+      for (const local of region) regionDensity += passDensities[local];
+      regionDensity /= region.length;
+      if (!(regionDensity > EPSILON) || regionDensity >= reference * 0.995) continue;
+      attempted = true;
+      const desired = Math.min(maxExpansion, Math.sqrt(reference / regionDensity));
+      if (!(desired > 1 + 1e-9)) continue;
+      let cx = 0;
+      let cy = 0;
+      for (const vertex of vertices) {
+        cx += uvs[vertex * 2];
+        cy += uvs[vertex * 2 + 1];
       }
-      if (!(nextDensities[local] > density + 1e-6)
-        || nextMin < currentMin - 1e-9
-        || nextMax > currentMax + 1e-6) continue;
-      uvs = next;
-      maxFactor = Math.max(maxFactor, factor);
-      iterations += 1;
-      accepted += 1;
+      cx /= vertices.size;
+      cy /= vertices.size;
+      let applied = false;
+      for (const factor of [desired, 1 + (desired - 1) * 0.5, 1 + (desired - 1) * 0.25]) {
+        if (!(factor > 1 + 1e-9)) continue;
+        const next = new Float32Array(uvs);
+        for (const vertex of vertices) {
+          next[vertex * 2] = cx + (uvs[vertex * 2] - cx) * factor;
+          next[vertex * 2 + 1] = cy + (uvs[vertex * 2 + 1] - cy) * factor;
+        }
+        let valid = true;
+        for (let test = 0; test < chart.triangles.length; test += 1) {
+          const ta = chart.localIndices[test * 3] * 2;
+          const tb = chart.localIndices[test * 3 + 1] * 2;
+          const tc = chart.localIndices[test * 3 + 2] * 2;
+          const testArea = signedTriangleArea2D(
+            next[ta], next[ta + 1],
+            next[tb], next[tb + 1],
+            next[tc], next[tc + 1],
+          );
+          const sign = testArea > EPSILON ? 1 : testArea < -EPSILON ? -1 : 0;
+          if (initialSigns[test] !== 0 && sign !== initialSigns[test]) {
+            valid = false;
+            break;
+          }
+        }
+        if (!valid) continue;
+        const nextDensities = chartFaceDensities(chart, face, resolution, next);
+        const nextDifference = densityDifference(nextDensities, reference);
+        if (!(nextDifference < currentDifference - 1e-9)) continue;
+        uvs = next;
+        passDensities = nextDensities;
+        currentDifference = nextDifference;
+        maxFactor = Math.max(maxFactor, factor);
+        iterations += region.length;
+        accepted += 1;
+        applied = true;
+        break;
+      }
+      if (applied) continue;
     }
     if (accepted === 0) break;
+    passes += 1;
+    let passMin = Infinity;
+    let passMax = 0;
+    for (const value of passDensities) {
+      if (value > EPSILON) passMin = Math.min(passMin, value);
+      if (value > passMax) passMax = value;
+    }
+    history.push({
+      pass: passes,
+      chart: chart.chart,
+      difference: Number(currentDifference.toFixed(8)),
+      spread: Number(densitySpread(passDensities).toFixed(6)),
+      minDensity: Number((Number.isFinite(passMin) ? passMin : 0).toFixed(4)),
+      maxDensity: Number(passMax.toFixed(4)),
+    });
   }
 
   const worldAngles = new Float32Array(chart.triangles.length * 3);
@@ -275,26 +330,28 @@ function inflateChart(
     angleAfter = nextScore;
     smoothingPasses += 1;
   }
-  return { uvs, iterations, smoothingPasses, angleBefore, angleAfter, maxFactor, attempted };
+  const finalDensities = chartFaceDensities(chart, face, resolution, uvs);
+  const differenceAfter = densityDifference(finalDensities, reference);
+  return { uvs, iterations, passes, smoothingPasses, angleBefore, angleAfter, maxFactor, attempted, history, differenceBefore, differenceAfter };
 }
 
 /** Inflation-only density pass. It runs after chart normalization and never
  * shrinks a chart; it scales low-density triangles around their centers until
  * they approach the average density or no safe scale remains. */
-export function inflateDensity(
+export function relaxDensity(
   mesh: ConditionedMesh,
   normalized: DensityResult,
   face: FaceGeometry,
-  options: InflateOptions,
+  options: RelaxOptions,
 ): DensityResult {
   const resolution = Math.max(1, Math.round(options.atlasResolution));
   const target = Math.max(0, options.targetTexelDensity);
-  const maxInflation = options.maxInflation ?? 1.2;
-  const maxIterations = Math.max(1, Math.round(options.maxIterations ?? 1024));
+  const maxExpansion = options.maxExpansion ?? 16;
+  const maxIterations = Math.max(1, Math.round(options.maxIterations ?? 1000));
   const issues: Issue[] = [];
   if (options.atlasResolution <= 0 || options.targetTexelDensity <= 0) {
     issues.push({
-      stage: 'inflate',
+      stage: 'relax',
       severity: 'error',
       code: 'invalid-density',
       message: 'Atlas resolution and target texel density must be positive.',
@@ -330,15 +387,21 @@ export function inflateDensity(
 
   let inflatedCharts = 0;
   let attemptedCharts = 0;
+  let boidPasses = 0;
   let inflationIterations = 0;
+  const relaxHistory: RelaxPassSample[] = [];
   let smoothingPasses = 0;
   let angleBefore = 0;
   let angleAfter = 0;
   let angleCharts = 0;
   let maxInflationApplied = 1;
   for (const chart of charts) {
-    const inflated = inflateChart(mesh, chart, face, resolution, referenceDensity, maxInflation, maxIterations);
+    const inflated = relaxChart(mesh, chart, face, resolution, referenceDensity, maxExpansion, maxIterations);
     if (inflated.attempted) attemptedCharts += 1;
+    if (inflated.passes > 0) {
+      boidPasses += inflated.passes;
+      relaxHistory.push(...inflated.history);
+    }
     if (inflated.smoothingPasses > 0) {
       angleBefore += inflated.angleBefore;
       angleAfter += inflated.angleAfter;
@@ -404,17 +467,17 @@ export function inflateDensity(
 
   if (inflatedCharts > 0) {
     issues.push({
-      stage: 'inflate',
+      stage: 'relax',
       severity: 'info',
-      code: 'density-inflated',
-      message: `Inflated ${inflatedCharts} of ${charts.length} chart${charts.length === 1 ? '' : 's'}.`,
+      code: 'density-relaxed',
+      message: `Relaxed ${inflatedCharts} of ${charts.length} chart${charts.length === 1 ? '' : 's'} in ${boidPasses} boid passes.`,
       value: inflatedCharts,
     });
     if (averageDensity > 0 && minimumAfter < averageDensity * 0.995) {
       issues.push({
-        stage: 'inflate',
+        stage: 'relax',
         severity: 'info',
-        code: 'density-inflation-limited',
+        code: 'density-relax-limited',
         message: `Stopped at ${minimumAfter.toFixed(1)} px/unit; the lowest face is still below the ${averageDensity.toFixed(1)} px/unit average.`,
         value: Number(minimumAfter.toFixed(4)),
         threshold: Number(averageDensity.toFixed(4)),
@@ -422,15 +485,15 @@ export function inflateDensity(
     }
   } else if (attemptedCharts > 0) {
     issues.push({
-      stage: 'inflate',
+      stage: 'relax',
       severity: 'info',
-      code: 'density-inflation-blocked',
-      message: `No chart could be inflated without lowering another face; ${attemptedCharts} chart${attemptedCharts === 1 ? '' : 's'} still have low-density faces.`,
+      code: 'density-relax-blocked',
+      message: `No chart could grow without lowering another face; ${attemptedCharts} chart${attemptedCharts === 1 ? '' : 's'} still have low-density faces.`,
       value: attemptedCharts,
     });
   } else {
     issues.push({
-      stage: 'inflate',
+      stage: 'relax',
       severity: 'info',
       code: 'density-already-uniform',
       message: 'Every face already meets the reference texel density.',
@@ -448,17 +511,20 @@ export function inflateDensity(
     minimumDensityAfter: Number((Number.isFinite(minimumAfter) ? minimumAfter : 0).toFixed(4)),
     densityBeforeSpread: Number(densitySpread(densitiesBefore).toFixed(6)),
     densityAfterSpread: Number(densitySpread(densitiesAfter).toFixed(6)),
+    densityDifferenceBefore: Number(densityDifference(densitiesBefore, referenceDensity).toFixed(8)),
+    densityDifferenceAfter: Number(densityDifference(densitiesAfter, referenceDensity).toFixed(8)),
     densityP50: Number(arrays.summary.p50.toFixed(4)),
     densityP95: Number(arrays.summary.p95.toFixed(4)),
     attemptedCharts,
-    inflatedCharts,
-    inflatedFaces,
-    inflatedVertices,
-    inflationIterations,
+    relaxedCharts: inflatedCharts,
+    relaxedFaces: inflatedFaces,
+    relaxedVertices: inflatedVertices,
+    boidPasses,
+    expandedTriangles: inflationIterations,
     smoothingPasses,
     angleMeanBefore: Number((angleCharts > 0 ? angleBefore / angleCharts : 0).toFixed(4)),
     angleMeanAfter: Number((angleCharts > 0 ? angleAfter / angleCharts : 0).toFixed(4)),
-    maxInflation: Number(maxInflationApplied.toFixed(4)),
+    maxExpansion: Number(maxInflationApplied.toFixed(4)),
     uvAreaFraction: Number(uvAreaFraction.toFixed(6)),
   };
 
@@ -469,6 +535,7 @@ export function inflateDensity(
     densityRatio: arrays.densityRatio,
     chartScales: normalized.chartScales,
     stats,
+    relaxHistory,
     issues,
   };
 }

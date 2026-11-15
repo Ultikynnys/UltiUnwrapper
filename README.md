@@ -7,9 +7,9 @@ Every stage keeps its own UVs, chart ids, seam edges, per-face metrics, atlas pl
 ## Features
 
 - Imports FBX, OBJ, glTF, and GLB bundles. Companion textures and `.bin` files can be dropped with the primary model.
-- Seven named stages: condition, segment, parameterize, normalize, inflate, pack, validate.
+- Seven named stages: condition, segment, parameterize, normalize, relax, pack, validate.
 - 3D viewport with chart colors, seam and cut overlays, angle and area distortion heatmaps, flipped faces, texel-density heatmap, checker material, wireframe, and overlap view.
-- 2D pane with the packed atlas for pack and validate, a diagnostic chart gallery for parameterize, normalize, and inflate, and a chart inventory for condition and segment.
+- 2D pane with the packed atlas for pack and validate, a diagnostic chart gallery for parameterize, normalize, and relax, and a chart inventory for condition and segment.
 - Synchronized chart selection: click a chart in 3D or 2D and both panes isolate it.
 - Ranked weakness list. Selecting a weakness jumps to validate, isolates the chart, and switches to the matching heatmap.
 - Metrics strip, per-stage stat and issue inspector, distortion and density histograms.
@@ -51,7 +51,7 @@ The view menu is stage-specific.
 | Segment | Chart colors with seam edges in amber and geodesic cuts in pink |
 | Parameterize | Angle distortion, area distortion, flipped faces, charts, clay |
 | Normalize | Texel density, checker, area distortion, charts |
-| Inflate | Density change, texel density, checker, area distortion, charts |
+| Relax | Relax change, texel density, checker, area distortion, charts |
 | Pack | Checker, charts, area distortion |
 | Validate | Overlap, texel density, angle distortion, area distortion, flipped faces, charts |
 
@@ -60,7 +60,7 @@ The view menu is stage-specific.
 ### 2D pane
 
 - `atlas`: true packed atlas with padding outlines and the overlap mask.
-- `gallery`: one diagnostic cell per chart. A single shared scale preserves relative chart size, so density differences remain visible. In the inflate stage the normalized outline is dashed and the inflated outline is solid.
+- `gallery`: one diagnostic cell per chart. A single shared scale preserves relative chart size, so density differences remain visible. In the relax stage the normalized outline is dashed and the relaxed outline is solid.
 - `inventory`: chart count and a note that the stage has no flattened layout yet.
 
 Click a chart in either pane to isolate it. Click empty space or use `Clear chart` to clear it.
@@ -77,15 +77,15 @@ Atlas resolution, padding, seam angle, target texel density, 90-degree rotation,
 | 2 | Segment | Dihedral, object, material, and non-manifold seams; flood-fill charts; geodesic cuts for closed charts | Seam edges, chart ids, cut paths, chart areas | Chart colors, seam lines, cut lines |
 | 3 | Parameterize | Per-chart local frame, pinned LSCM, harmonic initialization, winding correction, projection fallback | Chart-local UVs, angle and area distortion, flipped flags | Heatmaps, flipped faces, chart gallery |
 | 4 | Normalize | Scale every chart to the target texel density | Per-chart scales, density before and after, required atlas area | Density heatmap, checker, area heatmap |
-| 5 | Inflate | Scale every low-density triangle about its own UV center toward the average density, then smooth vertices toward their neighbors using angle distortion as the accept test | Inflated faces and vertices, triangle scales, smoothing passes, angle before and after | Density change, dashed before outline, density heatmap |
+| 5 | Relax | Boid regions grow low-density sections: connected low-density faces form a flock, scale around their centroid, and retry at weaker strengths until the chart density difference falls without folding | Relaxed faces and vertices, boid passes, density difference before and after, per-pass history | Relax change, dashed before outline, density heatmap |
 | 6 | Pack | MaxRects packing with padding, optional 90-degree rotation, binary-search fit scaling | Placements, atlas UVs, occupancy, achieved density | Atlas, padding outlines, occupancy, checker |
 | 7 | Validate | Interior raster overlap, percentile metrics, weakness ranking, pass/warn/error | Overlap mask, ranked weaknesses, summary | Overlap mask, weakness list, click-to-isolate |
 
-Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target when possible. Stage 5 then scales every low-density triangle about its own UV center in small steps, sorted by density. A scale is rejected if it folds the chart, lowers the minimum density, or raises the maximum density. Passes repeat until no triangle can grow. A final smoothing pass moves each UV vertex toward its neighbor average, preserves chart area, and accepts the move only when mean angle distortion decreases. The stage shows before and after spread, inflated faces and vertices, smoothing passes, angle before and after, a density-change view, and dashed normalized outlines in the gallery. Stage 6 may reduce all charts uniformly when the target does not fit and reports the achieved density. With `fitToAtlas` enabled it instead grows every chart uniformly until the atlas is full, and reports the resulting higher density. Charts with large concave silhouettes use rasterized silhouette packing, so their bounding boxes may overlap while their triangles do not. Simpler chart sets use MaxRects with four free-rectangle heuristics, four item orders, and optional 90-degree rotation.
+Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target when possible. Stage 5 groups connected low-density faces into flock regions. Each region scales around its centroid by the factor needed to reach the reference density, then retries at half and quarter strength. A pass is accepted only when the chart density difference falls and no triangle folds. The search stops when no region can improve or after 1000 passes per chart; every accepted pass is recorded with its density difference, spread, and minimum density. The stage shows before and after spread, relaxed faces and vertices, boid passes, density difference before and after, a per-pass history table, a relax-change view, and dashed normalized outlines in the gallery. Stage 6 may reduce all charts uniformly when the target does not fit and reports the achieved density. With `fitToAtlas` enabled it instead grows every chart uniformly until the atlas is full, and reports the resulting higher density. Charts with large concave silhouettes use rasterized silhouette packing, so their bounding boxes may overlap while their triangles do not. Simpler chart sets use MaxRects with four free-rectangle heuristics, four item orders, and optional 90-degree rotation.
 
 A closed chart cannot be flattened as a disk. Stage 2 finds a geodesic cut path, marks it as a seam, and resegments. The cut is shown in pink and counted in `cutsAdded`.
 
-When the input has UVs, the pipeline reuses its UV islands and existing flattening by default, then normalizes density, inflates sparse faces, and repacks them. This avoids destroying a usable artist layout. Use `--rewrap` in the CLI to ignore source UVs and generate new seams; models without UVs always use the automatic path.
+When the input has UVs, the pipeline reuses its UV islands and existing flattening by default, then normalizes density, relaxes sparse faces, and repacks them. This avoids destroying a usable artist layout. Use `--rewrap` in the CLI to ignore source UVs and generate new seams; models without UVs always use the automatic path.
 
 ## CLI
 
@@ -203,7 +203,7 @@ The desktop binary opens the app when launched without arguments. Any argument o
 ## Layout
 
 ```text
-src/lib/unwrap/      pipeline, segmentation, parameterization, density, inflation, packing, validation
+src/lib/unwrap/      pipeline, segmentation, parameterization, density, relaxation, packing, validation
 src/lib/             model loading, viewport, atlas, metrics, demo mesh, worker
 src/ui/              app shell, step inspector, pure UI state helpers
 cli/                 shared CLI core and Node host

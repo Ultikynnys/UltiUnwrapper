@@ -8,7 +8,7 @@ export type StageId =
   | 'segment'
   | 'parameterize'
   | 'normalize'
-  | 'inflate'
+  | 'relax'
   | 'pack'
   | 'validate';
 
@@ -191,11 +191,23 @@ export type DensityOptions = {
   maxChartScale?: number;
 };
 
-export type InflateOptions = DensityOptions & {
-  /** Largest face inflation applied in one step. */
-  maxInflation?: number;
-  /** Maximum number of inflation iterations per chart. */
+export type RelaxOptions = DensityOptions & {
+  /** Largest linear UV growth a single boid region may request. */
+  maxExpansion?: number;
+  /** Maximum number of accepted boid passes per chart. */
   maxIterations?: number;
+};
+
+export type RelaxPassSample = {
+  pass: number;
+  /** Chart id that produced this pass sample. */
+  chart?: number;
+  /** Mean absolute texel-density difference from the reference, normalized. */
+  difference: number;
+  /** Max/min density spread over the chart set. */
+  spread: number;
+  minDensity: number;
+  maxDensity: number;
 };
 
 export type DensityResult = {
@@ -209,6 +221,8 @@ export type DensityResult = {
   /** Per-chart normalization scale, indexed by chart id. */
   chartScales: Float32Array;
   stats: StageStats;
+  /** Per-pass density-difference history for the boid relax. */
+  relaxHistory?: RelaxPassSample[];
   issues: Issue[];
 };
 
@@ -284,8 +298,10 @@ export type StageSnapshot = {
   /** Edge ids added by geodesic cuts. */
   cutEdges: Uint32Array | null;
   charts: ChartUv[] | null;
-  /** Normalized charts before the inflate pass, for before/after inspection. */
+  /** Normalized charts before the relax pass, for before/after inspection. */
   previousCharts?: ChartUv[] | null;
+  /** Per-pass density-difference history for the relax stage. */
+  relaxHistory?: RelaxPassSample[] | null;
   atlas: AtlasInfo | null;
   face: {
     angleDistortion?: Float32Array;

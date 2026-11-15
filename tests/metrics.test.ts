@@ -34,37 +34,36 @@ describe('stage headlines', () => {
     expect(stageHeadline(stage('segment', { charts: 1 }))).toBe('1 chart');
     expect(stageHeadline(stage('parameterize', { angleP95: 14.5003 }))).toBe('p95 14.5 deg');
     expect(stageHeadline(stage('normalize', { densityP50: 256 }))).toBe('256 px/unit');
-    expect(stageHeadline(stage('inflate', { inflatedFaces: 48 }))).toBe('48 faces');
+    expect(stageHeadline(stage('relax', { relaxedFaces: 48 }))).toBe('48 faces');
     expect(stageHeadline(stage('pack', { occupancy: 0.375 }))).toBe('38% packed');
     expect(stageHeadline(stage('validate', { status: 'pass' }, 'ok'))).toBe('PASS');
   });
 
-  it('builds the inflate cards from the inflation pass', () => {
-    const cards = stageCards(stage('inflate', {
-      inflatedCharts: 2,
-      inflatedFaces: 48,
-      inflatedVertices: 120,
+  it('builds the relax cards from the boid pass', () => {
+    const cards = stageCards(stage('relax', {
+      relaxedCharts: 2,
+      relaxedFaces: 48,
+      relaxedVertices: 120,
       attemptedCharts: 4,
-      inflationIterations: 3,
-      smoothingPasses: 5,
-      angleMeanBefore: 4,
-      angleMeanAfter: 2.5,
+      boidPasses: 5,
+      densityDifferenceBefore: 0.3758,
+      densityDifferenceAfter: 0.2858,
       densityAfterSpread: 0.12,
       uvAreaFraction: 0.5,
     }));
     expect(cards.map((card) => card.label)).toEqual([
       'Before spread',
       'After spread',
-      'Inflated faces',
-      'Smoothing',
-      'Angle',
+      'Relaxed faces',
+      'Boid passes',
+      'Density diff',
     ]);
     expect(cards[0].value).toBe('-');
     expect(cards[1].value).toBe('12.00%');
     expect(cards[2].value).toBe('48');
     expect(cards[2].hint).toBe('120 verts');
     expect(cards[3].value).toBe('5');
-    expect(cards[4].value).toBe('2.50 deg');
+    expect(cards[4].value).toBe('0.3758 -> 0.2858');
   });
 
   it('builds the validate cards from the final metrics', () => {

@@ -32,7 +32,7 @@ export const STAGE_ORDER: StageId[] = [
   'segment',
   'parameterize',
   'normalize',
-  'inflate',
+  'relax',
   'pack',
   'validate',
 ];
@@ -42,7 +42,7 @@ export const STAGE_LABELS: Record<StageId, string> = {
   segment: 'Segment',
   parameterize: 'Parameterize',
   normalize: 'Normalize density',
-  inflate: 'Inflate density',
+  relax: 'Relax density',
   pack: 'Pack atlas',
   validate: 'Validate',
 };

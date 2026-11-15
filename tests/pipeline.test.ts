@@ -14,7 +14,7 @@ describe('unwrap pipeline', () => {
       'segment',
       'parameterize',
       'normalize',
-      'inflate',
+      'relax',
       'pack',
       'validate',
     ]);

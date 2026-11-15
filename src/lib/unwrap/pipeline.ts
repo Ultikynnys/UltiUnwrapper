@@ -5,7 +5,7 @@ import {
   type UnwrapConfig,
 } from './config';
 import { normalizeDensity } from './density';
-import { inflateDensity } from './inflate';
+import { relaxDensity } from './relax';
 import { conditionMesh, computeFaceGeometry, type FaceGeometry } from './mesh';
 import { packAtlas, type PackResult } from './pack';
 import { computeSeams } from './seams';
@@ -55,7 +55,7 @@ export type UnwrapResult = {
   segmentation: Segmentation;
   parameterization: ParameterizeResult;
   density: DensityResult;
-  inflation: DensityResult;
+  relaxation: DensityResult;
   pack: PackResult;
   validation: ValidationResult;
   stages: StageSnapshot[];
@@ -315,34 +315,35 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
   emit('normalize', 3, 'done', normalizeDuration);
 
   started = clock();
-  emit('inflate', 4, 'start');
-  const inflation = inflateDensity(condition.mesh, density, face, {
+  emit('relax', 4, 'start');
+  const relaxation = relaxDensity(condition.mesh, density, face, {
     atlasResolution: config.atlasResolution,
     targetTexelDensity: config.targetTexelDensity,
   });
-  const inflateDuration = clock() - started;
+  const relaxDuration = clock() - started;
   stages.push({
-    id: 'inflate',
+    id: 'relax',
     index: 4,
-    label: STAGE_LABELS.inflate,
-    durationMs: inflateDuration,
-    status: stageStatus(inflation.issues),
-    stats: inflation.stats,
-    issues: inflation.issues,
-    uvs: inflation.triangleUvs,
+    label: STAGE_LABELS.relax,
+    durationMs: relaxDuration,
+    status: stageStatus(relaxation.issues),
+    stats: relaxation.stats,
+    issues: relaxation.issues,
+    uvs: relaxation.triangleUvs,
     chartOfTriangle: segmentation.chartOfTriangle,
     chartCount: segmentation.charts.length,
     seamEdges: edgeIds(segmentation.seamEdge),
     cutEdges: segmentation.cutEdgeIndices,
-    charts: inflation.charts,
+    charts: relaxation.charts,
     previousCharts: density.charts,
+    relaxHistory: relaxation.relaxHistory ?? [],
     atlas: null,
     face: {
       angleDistortion: parameterization.angleDistortion,
       areaDistortion: parameterization.areaDistortion,
-      texelDensity: inflation.faceTexelDensity,
+      texelDensity: relaxation.faceTexelDensity,
       texelDensityBefore: density.faceTexelDensity,
-      densityRatio: inflation.densityRatio,
+      densityRatio: relaxation.densityRatio,
       flipped: parameterization.flipped,
     },
     overlapMask: null,
@@ -350,11 +351,11 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     overlapHeight: 0,
     weaknesses: [],
   });
-  emit('inflate', 4, 'done', inflateDuration);
+  emit('relax', 4, 'done', relaxDuration);
 
   started = clock();
   emit('pack', 5, 'start');
-  const pack = packAtlas(condition.mesh, inflation, face, {
+  const pack = packAtlas(condition.mesh, relaxation, face, {
     atlasResolution: config.atlasResolution,
     padding: config.padding,
     allowRotation: config.allowRotation,
@@ -444,7 +445,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     validation,
     pack,
     parameterization,
-    density: inflation,
+    density: relaxation,
   });
 
   return {
@@ -455,7 +456,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     segmentation,
     parameterization,
     density,
-    inflation,
+    relaxation,
     pack,
     validation,
     stages,
