@@ -910,11 +910,20 @@ export function parameterizeMesh(
   topology: MeshTopology,
   options: ParameterizeOptions = {},
 ): ParameterizeResult {
-  const charts = segmentation.charts.map((chart) => (
-    options.sourceUvs && mesh.triangleUvs
+  const charts = segmentation.charts.map((chart) => {
+    let reuseSource = Boolean(options.sourceUvs && mesh.triangleUvs);
+    if (reuseSource && options.reparameterizeMask) {
+      for (const triangle of chart.triangles) {
+        if (options.reparameterizeMask[triangle]) {
+          reuseSource = false;
+          break;
+        }
+      }
+    }
+    return reuseSource
       ? sourceChart(mesh, chart) ?? parameterizeChart(mesh, chart, face, topology, options)
-      : parameterizeChart(mesh, chart, face, topology, options)
-  ));
+      : parameterizeChart(mesh, chart, face, topology, options);
+  });
   const triangleUvs = new Float32Array(mesh.triangleCount * 6);
   for (const chart of charts) {
     for (let local = 0; local < chart.triangles.length; local += 1) {

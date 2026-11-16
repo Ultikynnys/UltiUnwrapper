@@ -30,6 +30,9 @@ export type RefineOptions = SegmentOptions & {
   tolerance?: number;
   maxIterations?: number;
   maxFlippedFraction?: number;
+  /** Reuse source UV charts where they pass the density budget, and re-solve
+   * charts that receive further cuts. */
+  sourceUvs?: boolean;
 };
 
 export type RefineResult = {
@@ -114,6 +117,8 @@ export function refineUnwrap(
   const seams: SeamResult = computeSeams(mesh, topology, face, options);
   const seamEdge = new Uint8Array(seams.seamEdge);
   const budget = Math.max(0, options.maxDensitySpread);
+  const preserveSourceUvs = options.sourceUvs === true && Boolean(mesh.triangleUvs);
+  const reparameterizeMask = preserveSourceUvs ? new Uint8Array(mesh.triangleCount) : undefined;
 
   let segmentation: Segmentation | null = null;
   let parameterization: ParameterizeResult | null = null;
@@ -141,6 +146,8 @@ export function refineUnwrap(
       tolerance: options.tolerance,
       maxIterations: options.maxIterations,
       maxFlippedFraction: options.maxFlippedFraction,
+      sourceUvs: preserveSourceUvs,
+      reparameterizeMask,
     });
     parameterizeMs += clock() - parameterizeStart;
     segmentation = currentSegmentation;
@@ -165,6 +172,9 @@ export function refineUnwrap(
     for (const chart of failing) {
       if (chart.triangles.length < minChartTriangles) continue;
       const cut = cutFailingChart(mesh, topology, chart, seamEdge);
+      if (reparameterizeMask && cut.added > 0) {
+        for (const triangle of chart.triangles) reparameterizeMask[triangle] = 1;
+      }
       addedThisRound += cut.added;
       seams.interiorSeamCount += cut.added;
       seams.interiorSeamLength += cut.length;

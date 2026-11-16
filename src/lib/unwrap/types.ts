@@ -168,6 +168,9 @@ export type ParameterizeOptions = {
   texelDensity?: number;
   /** Reuse the source UV layout instead of solving a new flattening. */
   sourceUvs?: boolean;
+  /** Per-triangle mask. Charts containing any set triangle are solved
+   * instead of reusing the source UV layout. */
+  reparameterizeMask?: Uint8Array;
 };
 
 export type ParameterizeResult = {

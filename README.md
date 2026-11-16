@@ -73,7 +73,7 @@ Atlas resolution, padding, seam angle, target texel density, 90-degree rotation,
 | # | Stage | Work | Snapshot | Visualization |
 | --- | --- | --- | --- | --- |
 | 1 | Condition | World-space flatten, weld, degenerate removal, edge topology | Welded mesh, source map, boundary and non-manifold edges | Clay mesh, amber boundary, red non-manifold |
-| 2 | Segment | Dihedral, object, material, and non-manifold seams; flood-fill charts; geodesic cuts for closed charts | Seam edges, chart ids, cut paths, chart areas | Chart colors, seam lines, cut lines |
+| 2 | Segment | Dihedral, object, material, and non-manifold seams; flood-fill charts; geodesic cuts for closed charts; density-budget refinement | Seam edges, chart ids, cut paths, chart areas | Chart colors, seam lines, cut lines |
 | 3 | Parameterize | Per-chart local frame, pinned LSCM, harmonic initialization, winding correction, projection fallback | Chart-local UVs, angle and area distortion, flipped flags | Heatmaps, flipped faces, chart gallery |
 | 4 | Normalize | Scale every chart to the target texel density | Per-chart scales, density before and after, required atlas area | Density heatmap, checker, area heatmap |
 | 5 | Pack | MaxRects packing with padding, optional 90-degree rotation, binary-search fit scaling | Placements, atlas UVs, occupancy, achieved density | Atlas, padding outlines, occupancy, checker |
@@ -83,7 +83,7 @@ Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per wo
 
 A closed chart cannot be flattened as a disk. Stage 2 finds a geodesic cut path, marks it as a seam, and resegments. The cut is shown in pink and counted in `cutsAdded`.
 
-When the input has UVs, the pipeline reuses its UV islands and existing flattening by default, then normalizes density and repacks them. This avoids destroying a usable artist layout. Use `--rewrap` in the CLI to ignore source UVs and generate new seams; models without UVs always use the automatic path.
+When the input has UVs, the pipeline starts from its UV islands and existing flattening by default, cuts and re-solves charts that exceed the density budget, then normalizes density and repacks them. This preserves a usable artist layout while still refining sparse or stretched islands. Use `--rewrap` in the CLI to ignore source UVs and generate new seams; models without UVs always use the automatic path.
 
 ## CLI
 

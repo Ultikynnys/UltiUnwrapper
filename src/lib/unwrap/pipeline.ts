@@ -8,9 +8,6 @@ import {
 import { normalizeDensity } from './density';
 import { conditionMesh, computeFaceGeometry, type FaceGeometry } from './mesh';
 import { packAtlas, type PackResult } from './pack';
-import { computeSeams } from './seams';
-import { segmentFromSeams } from './charts';
-import { parameterizeMesh } from './parameterize';
 import { refineUnwrap } from './refine';
 import { buildTopology, topologyStats } from './topology';
 import type {
@@ -142,83 +139,45 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
   });
   emit('condition', 'done', conditionDuration);
 
-  started = clock();
   emit('segment', 'start');
   const face = computeFaceGeometry(condition.mesh);
   const preserveSourceUvs = options.preserveSourceUvs !== false && Boolean(condition.mesh.triangleUvs);
-  let segmentation: Segmentation;
-  let parameterization: ParameterizeResult;
-  let segmentDuration: number;
-  let parameterizeDuration: number;
-  let refineRounds = 0;
-  let refineSeamsAdded = 0;
-  let refineUnresolved = 0;
-  let segmentIssues: Issue[];
+  const refinement = refineUnwrap(condition.mesh, topology, face, {
+    seamAngle: preserveSourceUvs ? 180 : config.seamAngle,
+    splitByObject: config.splitByObject,
+    splitByMaterial: config.splitByMaterial,
+    useUvSeams: preserveSourceUvs,
+    sourceUvs: preserveSourceUvs,
+    maxDensitySpread: config.thresholds.maxDensitySpread,
+    tolerance: config.tolerance,
+    maxIterations: config.maxIterations,
+    maxFlippedFraction: config.maxFlippedFraction,
+  });
+  const segmentation = refinement.segmentation;
+  const parameterization = refinement.parameterization;
+  const segmentDuration = refinement.segmentMs;
+  const parameterizeDuration = refinement.parameterizeMs;
+  const refineRounds = refinement.rounds;
+  const refineSeamsAdded = refinement.addedSeams;
+  const refineUnresolved = refinement.unresolved;
   if (preserveSourceUvs) {
-    const seams = computeSeams(condition.mesh, topology, face, {
-      seamAngle: 180,
-      splitByObject: config.splitByObject,
-      splitByMaterial: config.splitByMaterial,
-      useUvSeams: true,
-    });
-    segmentation = segmentFromSeams(
-      condition.mesh,
-      topology,
-      face,
-      seams.seamEdge,
-      {
-        seamAngle: 180,
-        splitByObject: config.splitByObject,
-        splitByMaterial: config.splitByMaterial,
-      },
-      seams,
-    );
-    segmentDuration = clock() - started;
-    const parameterizeStart = clock();
-    parameterization = parameterizeMesh(condition.mesh, segmentation, face, topology, {
-      tolerance: config.tolerance,
-      maxIterations: config.maxIterations,
-      maxFlippedFraction: config.maxFlippedFraction,
-      sourceUvs: true,
-    });
-    parameterizeDuration = clock() - parameterizeStart;
     parameterization.issues.push({
       stage: 'parameterize',
       severity: 'info',
       code: 'source-uvs-preserved',
-      message: 'Reused the input UV islands and their existing flattening.',
+      message: 'Reused the input UV islands and their existing flattening, re-solving charts that needed further cuts.',
       value: parameterization.charts.length,
     });
-    segmentIssues = segmentation.issues;
-  } else {
-    const refinement = refineUnwrap(condition.mesh, topology, face, {
-      seamAngle: config.seamAngle,
-      splitByObject: config.splitByObject,
-      splitByMaterial: config.splitByMaterial,
-      useUvSeams: false,
-      maxDensitySpread: config.thresholds.maxDensitySpread,
-      tolerance: config.tolerance,
-      maxIterations: config.maxIterations,
-      maxFlippedFraction: config.maxFlippedFraction,
+  }
+  const segmentIssues: Issue[] = [...segmentation.issues];
+  if (refinement.stalled) {
+    segmentIssues.push({
+      stage: 'segment',
+      severity: 'warn',
+      code: 'refine-budget-exhausted',
+      message: `Stopped cutting after ${refinement.rounds} rounds with ${refinement.unresolved} chart${refinement.unresolved === 1 ? '' : 's'} still outside the density budget.`,
+      value: refinement.unresolved,
     });
-    segmentation = refinement.segmentation;
-    parameterization = refinement.parameterization;
-    segmentDuration = refinement.segmentMs;
-    parameterizeDuration = refinement.parameterizeMs;
-    refineRounds = refinement.rounds;
-    refineSeamsAdded = refinement.addedSeams;
-    refineUnresolved = refinement.unresolved;
-    const refineIssues: Issue[] = [];
-    if (refinement.stalled) {
-      refineIssues.push({
-        stage: 'segment',
-        severity: 'warn',
-        code: 'refine-budget-exhausted',
-        message: `Stopped cutting after ${refinement.rounds} rounds with ${refinement.unresolved} chart${refinement.unresolved === 1 ? '' : 's'} still outside the density budget.`,
-        value: refinement.unresolved,
-      });
-    }
-    segmentIssues = [...segmentation.issues, ...refineIssues];
   }
   stages.push({
     id: 'segment',

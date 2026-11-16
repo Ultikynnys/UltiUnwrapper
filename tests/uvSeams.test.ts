@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeSplitCube } from './helpers/meshes';
+import { makePlaneGrid, makeSplitCube } from './helpers/meshes';
 import { conditionMesh, computeFaceGeometry } from '../src/lib/unwrap/mesh';
 import { buildTopology } from '../src/lib/unwrap/topology';
 import { computeSeams } from '../src/lib/unwrap/seams';
@@ -21,6 +21,24 @@ function withUvIslands(): RawMesh {
       const offset = triangle * 6 + corner * 2;
       triangleUvs[offset] = face * 0.2 + corners[corner][0] * 0.1;
       triangleUvs[offset + 1] = corners[corner][1] * 0.1;
+    }
+  }
+  return { ...base, triangleUvs };
+}
+
+function withUnevenUvScale(segments = 10): RawMesh {
+  const base = makePlaneGrid(segments, 2);
+  const triangleUvs = new Float32Array(base.indices.length * 2);
+  const warp = (value: number): number => {
+    const t = (value + 1) / 2;
+    return t + 0.35 * t * t;
+  };
+  for (let triangle = 0; triangle < base.indices.length / 3; triangle += 1) {
+    for (let corner = 0; corner < 3; corner += 1) {
+      const vertex = base.indices[triangle * 3 + corner];
+      const offset = (triangle * 3 + corner) * 2;
+      triangleUvs[offset] = warp(base.positions[vertex * 3]);
+      triangleUvs[offset + 1] = (base.positions[vertex * 3 + 2] + 1) / 2;
     }
   }
   return { ...base, triangleUvs };
@@ -59,5 +77,15 @@ describe('source UV seams', () => {
 
     const rewrapped = runUnwrap(raw, DEFAULT_CONFIG, { preserveSourceUvs: false });
     expect(rewrapped.parameterization.issues.some((issue) => issue.code === 'source-uvs-preserved')).toBe(false);
+  });
+
+  it('cuts source UV charts further when they miss the density budget', () => {
+    const raw = withUnevenUvScale();
+    const result = runUnwrap(raw, DEFAULT_CONFIG);
+    expect(result.parameterization.issues.some((issue) => issue.code === 'source-uvs-preserved')).toBe(true);
+    expect(result.segmentation.charts.length).toBeGreaterThan(1);
+    expect(Number(result.stages[1].stats.refineSeamsAdded)).toBeGreaterThan(0);
+    expect(Number(result.stages[1].stats.refineRounds)).toBeGreaterThan(1);
+    expect(result.parameterization.charts.some((chart) => chart.initialization !== 'source')).toBe(true);
   });
 });
