@@ -114,8 +114,6 @@ async function writeStageArtifacts(
     if (stage.charts && stage.charts.length > 0) {
       const svg = renderChartsSvg(stage.charts, {
         atlas: stage.id === 'pack' || stage.id === 'validate',
-        placements: stage.atlas?.placements,
-        atlasResolution: stage.atlas?.resolution,
         title: `${number}. ${stage.label}`,
       });
       const svgPath = `${stem}.svg`;

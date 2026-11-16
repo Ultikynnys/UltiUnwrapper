@@ -20,7 +20,7 @@ const packDefaults: PackOptions = {
   targetTexelDensity: 256,
 };
 
-function run(raw: RawMesh, densityOptions: Partial<DensityOptions> = {}, packOptions: Partial<PackOptions> = {}) {
+function prepare(raw: RawMesh, densityOptions: Partial<DensityOptions> = {}) {
   const { mesh } = conditionMesh(raw);
   const topology = buildTopology(mesh);
   const face = computeFaceGeometry(mesh);
@@ -32,14 +32,19 @@ function run(raw: RawMesh, densityOptions: Partial<DensityOptions> = {}, packOpt
   const parameterization = parameterizeMesh(mesh, segmentation, face, topology);
   const densityOptionsResolved = { ...densityDefaults, ...densityOptions };
   const density = normalizeDensity(mesh, parameterization, face, densityOptionsResolved);
+  return { mesh, topology, face, segmentation, parameterization, density, densityOptionsResolved };
+}
+
+function run(raw: RawMesh, densityOptions: Partial<DensityOptions> = {}, packOptions: Partial<PackOptions> = {}) {
+  const prepared = prepare(raw, densityOptions);
   const packOptionsResolved = {
     ...packDefaults,
-    atlasResolution: densityOptionsResolved.atlasResolution,
-    targetTexelDensity: densityOptionsResolved.targetTexelDensity,
+    atlasResolution: prepared.densityOptionsResolved.atlasResolution,
+    targetTexelDensity: prepared.densityOptionsResolved.targetTexelDensity,
     ...packOptions,
   };
-  const pack = packAtlas(mesh, density, face, packOptionsResolved);
-  return { mesh, topology, face, segmentation, parameterization, density, pack };
+  const pack = packAtlas(prepared.mesh, prepared.density, prepared.face, packOptionsResolved);
+  return { ...prepared, pack };
 }
 
 function makeDisconnectedTriangles(count: number): RawMesh {
@@ -81,7 +86,7 @@ describe('texel density normalization', () => {
   });
 
   it('warns when the target density needs more than one atlas', () => {
-    const { density } = run(makeCube(2), { targetTexelDensity: 512 });
+    const { density } = prepare(makeCube(2), { targetTexelDensity: 512 });
     expect(density.stats.requiredAreaFraction).toBeCloseTo(1.5, 5);
     expect(density.issues.some((issue) => issue.code === 'target-density-does-not-fit')).toBe(true);
     expect(density.stats.densityP50).toBeCloseTo(512, 3);
@@ -98,13 +103,13 @@ describe('texel density normalization', () => {
   });
 
   it('reports a non-positive atlas or target', () => {
-    const { density } = run(makeCube(2), { atlasResolution: 0, targetTexelDensity: 0 });
+    const { density } = prepare(makeCube(2), { atlasResolution: 0, targetTexelDensity: 0 });
     expect(density.issues.some((issue) => issue.code === 'invalid-density')).toBe(true);
     expect(density.stats.targetDensity).toBe(0);
   });
 
   it('reports chart scales clamped by the density limits', () => {
-    const { density } = run(makeCube(2), { minChartScale: 1 });
+    const { density } = prepare(makeCube(2), { minChartScale: 1 });
     expect(density.issues.some((issue) => issue.code === 'density-clamped')).toBe(true);
     expect(density.stats.clampedCharts).toBe(6);
     expect(density.stats.scaleMin).toBe(1);
@@ -148,20 +153,9 @@ describe('atlas packing', () => {
     expect(pack.achievedTexelDensity).toBeGreaterThan(original.pack.achievedTexelDensity);
   });
 
-  it('reduces density uniformly when the target does not fit', () => {
-    const { pack } = run(makeCube(2), { targetTexelDensity: 512 }, { targetTexelDensity: 512 });
-    expect(pack.scale).toBeLessThan(0.9);
-    expect(pack.scale).toBeGreaterThan(0.5);
-    expect(pack.achievedTexelDensity).toBeLessThan(512);
-    expect(pack.issues.some((issue) => issue.code === 'density-reduced')).toBe(true);
-    expect(pack.placements).toHaveLength(6);
-    for (let i = 0; i < pack.faceTexelDensity.length; i += 1) {
-      expect(pack.faceTexelDensity[i]).toBeCloseTo(pack.achievedTexelDensity, 2);
-    }
-    for (const value of pack.triangleUvs) {
-      expect(value).toBeGreaterThanOrEqual(0);
-      expect(value).toBeLessThanOrEqual(1);
-    }
+  it('throws when the target density does not fit the atlas', () => {
+    expect(() => run(makeCube(2), { targetTexelDensity: 512 }, { targetTexelDensity: 512 }))
+      .toThrow(/Concave packing could not place/);
   });
 
   it('packs the cylinder charts deterministically', () => {
@@ -172,10 +166,9 @@ describe('atlas packing', () => {
     expect(first.placements).toHaveLength(3);
   });
 
-  it('rejects padding that leaves no atlas room', () => {
-    const { pack } = run(makeCube(2), { atlasResolution: 64 }, { atlasResolution: 64, padding: 32 });
-    expect(pack.placements).toHaveLength(0);
-    expect(pack.issues.some((issue) => issue.code === 'padding-exceeds-atlas')).toBe(true);
+  it('throws when padding leaves no atlas room', () => {
+    expect(() => run(makeCube(2), { atlasResolution: 64 }, { atlasResolution: 64, padding: 32 }))
+      .toThrow(/leaves no room/);
   });
 
   it('warns when a valid layout still has low occupancy', () => {
@@ -184,13 +177,11 @@ describe('atlas packing', () => {
     expect(pack.issues.some((issue) => issue.code === 'low-occupancy')).toBe(true);
   });
 
-  it('reports atlas overflow when even the smallest scale cannot fit', () => {
-    const { pack } = run(
+  it('throws when the charts do not fit the atlas', () => {
+    expect(() => run(
       makeDisconnectedTriangles(20),
       { atlasResolution: 16 },
       { atlasResolution: 16, padding: 4 },
-    );
-    expect(pack.placements).toHaveLength(0);
-    expect(pack.issues.some((issue) => issue.code === 'atlas-overflow')).toBe(true);
+    )).toThrow(/Concave packing could not place/);
   });
 });

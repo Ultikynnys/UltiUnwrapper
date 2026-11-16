@@ -96,6 +96,24 @@ describe('concave packing', () => {
     expect(filled!.placements[0].width).toBeGreaterThan(packed!.placements[0].width);
   });
 
+  it('reserves padding around every occupied texel', () => {
+    const small: ChartData = {
+      uvs: [0, 0, 0.1, 0, 0.1, 0.1, 0, 0.1],
+      indices: [0, 1, 2, 0, 2, 3],
+      triangles: [0, 1],
+    };
+    const first = chart(0, small, 0, 0, 0.1, 0.1);
+    const second = chart(1, small, 0, 0, 0.1, 0.1);
+    expect(packConcaveCharts([first, second], {
+      grid: 6,
+      resolution: 6,
+      padding: 2,
+      allowRotation: false,
+      scale: 1,
+      fill: false,
+    })).toBeNull();
+  });
+
   it('honors padding and rejects shapes that cannot fit the grid', () => {
     const [first, second] = complementaryLs();
     const padded = packConcaveCharts([first, second], {

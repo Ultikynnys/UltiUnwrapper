@@ -74,7 +74,7 @@ describe('CLI', () => {
     expect(await readFile(join(stages, 'stage-03-parameterize.json'), 'utf8')).toContain('angleP95');
     expect(await readFile(join(stages, 'stage-03-parameterize.obj'), 'utf8')).toContain('vt ');
     expect(await readFile(join(stages, 'stage-03-parameterize.svg'), 'utf8')).toContain('<svg');
-    expect(await readFile(join(stages, 'stage-05-pack.svg'), 'utf8')).toContain('stroke-dasharray');
+    expect(await readFile(join(stages, 'stage-05-pack.svg'), 'utf8')).toContain('<polygon');
     expect(await readFile(join(stages, 'stage-06-validate.json'), 'utf8')).toContain('overlapFraction');
   });
 

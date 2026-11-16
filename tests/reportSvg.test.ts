@@ -32,13 +32,10 @@ describe('report and stage SVG', () => {
     const charts = result.pack.charts;
     const atlas = renderChartsSvg(charts, {
       atlas: true,
-      placements: result.pack.placements,
-      atlasResolution: 2048,
       title: '<atlas>',
     });
     expect(atlas).toContain('<svg');
     expect(atlas).toContain('<polygon');
-    expect(atlas).toContain('stroke-dasharray');
     expect(atlas).toContain('&lt;atlas&gt;');
     const gallery = renderChartsSvg(charts, { title: 'gallery' });
     expect(gallery).toContain('<svg');

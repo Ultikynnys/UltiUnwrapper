@@ -58,7 +58,7 @@ The view menu is stage-specific.
 
 ### 2D pane
 
-- `atlas`: true packed atlas with padding outlines and the overlap mask.
+- `atlas`: true packed atlas with the overlap mask.
 - `gallery`: one diagnostic cell per chart. A single shared scale preserves relative chart size, so density differences remain visible.
 - `inventory`: chart count and a note that the stage has no flattened layout yet.
 
@@ -76,10 +76,10 @@ Atlas resolution, padding, seam angle, target texel density, 90-degree rotation,
 | 2 | Segment | Dihedral, object, material, and non-manifold seams; flood-fill charts; geodesic cuts for closed charts; density-budget refinement | Seam edges, chart ids, cut paths, chart areas | Chart colors, seam lines, cut lines |
 | 3 | Parameterize | Per-chart local frame, pinned LSCM, harmonic initialization, winding correction, projection fallback | Chart-local UVs, angle and area distortion, flipped flags | Heatmaps, flipped faces, chart gallery |
 | 4 | Normalize | Scale every chart to the target texel density | Per-chart scales, density before and after, required atlas area | Density heatmap, checker, area heatmap |
-| 5 | Pack | MaxRects packing with padding, optional 90-degree rotation, binary-search fit scaling | Placements, atlas UVs, occupancy, achieved density | Atlas, padding outlines, occupancy, checker |
+| 5 | Pack | Concave silhouette packing with padding, optional 90-degree rotation, fail on overflow | Placements, atlas UVs, occupancy, achieved density | Atlas, occupancy, checker |
 | 6 | Validate | Interior raster overlap, percentile metrics, weakness ranking, pass/warn/error | Overlap mask, ranked weaknesses, summary | Overlap mask, weakness list, click-to-isolate |
 
-Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target when possible. Stage 5 may reduce all charts uniformly when the target does not fit and reports the achieved density. With `fitToAtlas` enabled it instead grows every chart uniformly until the atlas is full, and reports the resulting higher density. Charts with large concave silhouettes use rasterized silhouette packing, so their bounding boxes may overlap while their triangles do not. Simpler chart sets use MaxRects with four free-rectangle heuristics, four item orders, and optional 90-degree rotation.
+Texel density is `sqrt(uvArea * atlasResolution^2 / worldArea)` in pixels per world unit. Stage 4 makes every chart reach the target. Stage 5 fails the run when the charts cannot be placed at that density, so the target is never silently lowered. With `fitToAtlas` enabled the packer instead grows every chart uniformly until the atlas is full and reports the resulting higher density. Charts use rasterized silhouette packing, so their bounding boxes may overlap while their triangles do not. The packer tries multiple insertion orders and the requested rotations, and the run fails instead of falling back to rectangular bounds.
 
 A closed chart cannot be flattened as a disk. Stage 2 finds a geodesic cut path, marks it as a seam, and resegments. The cut is shown in pink and counted in `cutsAdded`.
 
@@ -128,7 +128,7 @@ Exit codes:
 
 - `stage-01-condition.json` through `stage-06-validate.json` always.
 - `stage-03` onward: OBJ with that stage's UVs.
-- `stage-03` onward: SVG chart or atlas diagram. Pack and validate SVGs include padding outlines.
+- `stage-03` onward: SVG chart or atlas diagram for every stage with a layout.
 
 ### Report
 

@@ -84,7 +84,6 @@ function atlasInfo(pack: PackResult): AtlasInfo {
     padding: Number(pack.stats.padding ?? 0),
     scale: pack.scale,
     occupancy: pack.occupancy,
-    bboxOccupancy: pack.bboxOccupancy,
     placements: pack.placements,
   };
 }

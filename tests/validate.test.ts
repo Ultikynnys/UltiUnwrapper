@@ -18,13 +18,9 @@ describe('validation', () => {
     expect(result.validation.overlapWidth).toBe(1024);
   });
 
-  it('warns when the atlas must reduce density but keeps uniform density', () => {
+  it('throws when the target density needs more than one atlas', () => {
     const config = mergeConfig(DEFAULT_CONFIG, { targetTexelDensity: 512 });
-    const result = runUnwrap(makeCube(2), config);
-    expect(result.pack.scale).toBeLessThan(1);
-    expect(result.validation.status).toBe('warn');
-    expect(result.validation.stats.densitySpread).toBeLessThan(1e-5);
-    expect(result.validation.issues.some((issue) => issue.code === 'density-reduced')).toBe(true);
+    expect(() => runUnwrap(makeCube(2), config)).toThrow(/Concave packing could not place/);
   });
 
   it('passes a cylinder when every chart has room at the target density', () => {
@@ -37,7 +33,7 @@ describe('validation', () => {
   });
 
   it('exposes the area-driven density weakness of a cut sphere', () => {
-    const config = mergeConfig(DEFAULT_CONFIG, { targetTexelDensity: 512 });
+    const config = mergeConfig(DEFAULT_CONFIG, { targetTexelDensity: 512, atlasResolution: 4096 });
     const result = runUnwrap(makeSphere(12, 6, 1), config);
     expect(result.validation.status).toBe('error');
     expect(result.validation.stats.angleP95).toBeLessThan(20);
@@ -49,6 +45,7 @@ describe('validation', () => {
   it('warns about weak charts without failing the numeric thresholds', () => {
     const config = mergeConfig(DEFAULT_CONFIG, {
       targetTexelDensity: 512,
+      atlasResolution: 4096,
       thresholds: {
         maxOverlapFraction: 1,
         maxAngleP95: 180,
@@ -127,6 +124,7 @@ describe('validation', () => {
   it('fails a sphere when the angle threshold is tightened', () => {
     const config = mergeConfig(DEFAULT_CONFIG, {
       targetTexelDensity: 512,
+      atlasResolution: 4096,
       thresholds: { ...DEFAULT_CONFIG.thresholds, maxAngleP95: 1 },
     });
     const result = runUnwrap(makeSphere(12, 6, 1), config);

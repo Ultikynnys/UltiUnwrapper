@@ -239,7 +239,6 @@ export type AtlasInfo = {
   padding: number;
   scale: number;
   occupancy: number;
-  bboxOccupancy: number;
   placements: ChartPlacement[];
 };
 
@@ -248,14 +247,13 @@ export type PackResult = {
   /** 6 floats per global triangle, atlas UVs in [0,1]. */
   triangleUvs: Float32Array;
   placements: ChartPlacement[];
-  /** Uniform scale applied after density normalization. */
+  /** Uniform chart scale applied by the packer: 1 unless fill grows the
+   * layout to the atlas. */
   scale: number;
   achievedTexelDensity: number;
   faceTexelDensity: Float32Array;
   /** Rasterized triangle coverage over the atlas area. */
   occupancy: number;
-  /** Sum of chart bounding-box areas over the atlas area. */
-  bboxOccupancy: number;
   stats: StageStats;
   issues: Issue[];
 };

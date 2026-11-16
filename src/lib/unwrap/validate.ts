@@ -274,15 +274,6 @@ export function validateUnwrap(
       threshold: options.minOccupancy,
     });
   }
-  if (pack.scale < 0.999) {
-    issues.push({
-      stage: 'validate',
-      severity: 'warn',
-      code: 'density-reduced',
-      message: `Atlas fit reduced texel density to ${achievedDensity.toFixed(1)} px/unit.`,
-      value: Number(pack.scale.toFixed(6)),
-    });
-  }
   if (topWeaknesses.length > 0 && !failed && !hasErrorWeakness) {
     issues.push({
       stage: 'validate',

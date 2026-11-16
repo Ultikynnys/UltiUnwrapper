@@ -104,18 +104,31 @@ function dilate(
   if (pad <= 0) return source;
   const outerWidth = width + pad * 2;
   const outerHeight = height + pad * 2;
-  const data = new Uint8Array(outerWidth * outerHeight);
+  const horizontal = new Uint8Array(outerWidth * height);
+  const prefix = new Uint32Array(Math.max(width, height, outerWidth) + 1);
   for (let y = 0; y < height; y += 1) {
+    const row = y * width;
+    prefix[0] = 0;
     for (let x = 0; x < width; x += 1) {
-      if (!source[y * width + x]) continue;
-      const centerX = x + pad;
-      const centerY = y + pad;
-      for (let dy = -pad; dy <= pad; dy += 1) {
-        const row = (centerY + dy) * outerWidth;
-        for (let dx = -pad; dx <= pad; dx += 1) {
-          data[row + centerX + dx] = 1;
-        }
-      }
+      prefix[x + 1] = prefix[x] + source[row + x];
+    }
+    const outRow = y * outerWidth;
+    for (let xOut = 0; xOut < outerWidth; xOut += 1) {
+      const left = Math.max(0, xOut - pad * 2);
+      const right = Math.min(width, xOut + 1);
+      if (right > left && prefix[right] > prefix[left]) horizontal[outRow + xOut] = 1;
+    }
+  }
+  const data = new Uint8Array(outerWidth * outerHeight);
+  for (let x = 0; x < outerWidth; x += 1) {
+    prefix[0] = 0;
+    for (let y = 0; y < height; y += 1) {
+      prefix[y + 1] = prefix[y] + horizontal[y * outerWidth + x];
+    }
+    for (let yOut = 0; yOut < outerHeight; yOut += 1) {
+      const top = Math.max(0, yOut - pad * 2);
+      const bottom = Math.min(height, yOut + 1);
+      if (bottom > top && prefix[bottom] > prefix[top]) data[yOut * outerWidth + x] = 1;
     }
   }
   return data;
@@ -174,6 +187,9 @@ function buildMasks(
   const contentW = Math.max(1, Math.ceil(baseWidth * grid * scale));
   const contentH = Math.max(1, Math.ceil(baseHeight * grid * scale));
   const base = baseMask(chart, contentW, contentH);
+  if (!base.some((value) => value !== 0)) {
+    base[Math.floor(contentH / 2) * contentW + Math.floor(contentW / 2)] = 1;
+  }
   const pad = Math.max(0, Math.round((padding * grid) / resolution));
   const rotations: ConcaveRotation[] = allowRotation ? [0, 90, 180, 270] : [0];
   const masks: OrientedMask[] = [];
@@ -268,8 +284,14 @@ function findPlacement(
   const maxX = grid - mask.outerW;
   const maxY = grid - mask.outerH;
   if (maxX < 0 || maxY < 0) return null;
-  for (let y = 0; y <= maxY; y += step) {
-    for (let x = 0; x <= maxX; x += step) {
+  const xs: number[] = [];
+  for (let x = 0; x <= maxX; x += step) xs.push(x);
+  if (xs[xs.length - 1] !== maxX) xs.push(maxX);
+  const ys: number[] = [];
+  for (let y = 0; y <= maxY; y += step) ys.push(y);
+  if (ys[ys.length - 1] !== maxY) ys.push(maxY);
+  for (const y of ys) {
+    for (const x of xs) {
       if (!canPlace(mask, occupancy, occupancyWords, grid, x, y)) continue;
       let bestX = x;
       let bestY = y;

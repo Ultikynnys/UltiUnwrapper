@@ -264,26 +264,6 @@ export class Atlas2D {
     }
 
     this.drawOverlap(context);
-    const padding = this.state.stage?.atlas?.padding ?? 0;
-    const resolution = this.state.stage?.atlas?.resolution ?? 1;
-    const placements = this.state.stage?.atlas?.placements ?? [];
-    const boundsOverlap = placements.some((a, i) => placements.slice(i + 1).some((b) => (
-      a.x < b.x + b.width && a.x + a.width > b.x
-      && a.y < b.y + b.height && a.y + a.height > b.y
-    )));
-    if (padding > 0 && resolution > 0 && !boundsOverlap) {
-      context.strokeStyle = 'rgba(243, 240, 230, 0.35)';
-      context.setLineDash([3, 3]);
-      context.lineWidth = 1;
-      for (const placement of this.state.stage?.atlas?.placements ?? []) {
-        const x = plotLeft + ((placement.x - padding) / resolution) * size;
-        const y = plotTop + (1 - (placement.y + placement.height + padding) / resolution) * size;
-        const width = ((placement.width + padding * 2) / resolution) * size;
-        const height = ((placement.height + padding * 2) / resolution) * size;
-        context.strokeRect(x, y, width, height);
-      }
-      context.setLineDash([]);
-    }
   }
 
   private drawGallery(context: CanvasRenderingContext2D, charts: ChartUv[]): void {

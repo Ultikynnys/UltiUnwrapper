@@ -46,7 +46,6 @@ export type UnwrapReport = {
       padding: number;
       scale: number;
       occupancy: number;
-      bboxOccupancy: number;
       placements: number;
     };
     texelDensity: {
@@ -125,7 +124,6 @@ export function buildReport(input: BuildReportInput): UnwrapReport {
         padding: Number(pack.stats.padding ?? 0),
         scale: Number(pack.scale.toFixed(6)),
         occupancy: Number(pack.occupancy.toFixed(6)),
-        bboxOccupancy: Number(pack.bboxOccupancy.toFixed(6)),
         placements: pack.placements.length,
       },
       texelDensity: {

@@ -1,10 +1,8 @@
 import { chartColorCss } from './colors';
-import type { ChartPlacement, ChartUv } from './types';
+import type { ChartUv } from './types';
 
 export type SvgOptions = {
   atlas?: boolean;
-  placements?: ChartPlacement[];
-  atlasResolution?: number;
   size?: number;
   title?: string;
 };
@@ -17,8 +15,8 @@ function escapeXml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/** Renders charts as an SVG. Atlas mode uses [0,1] UVs and draws padding
- * rectangles; gallery mode fits every chart into one diagnostic frame. */
+/** Renders charts as an SVG. Atlas mode uses [0,1] UVs; gallery mode fits
+ * every chart into one diagnostic frame. */
 export function renderChartsSvg(charts: ChartUv[], options: SvgOptions = {}): string {
   const size = options.size ?? 1024;
   const atlas = options.atlas ?? false;
@@ -74,23 +72,6 @@ export function renderChartsSvg(charts: ChartUv[], options: SvgOptions = {}): st
       parts.push(
         `<polygon points="${point(chart.uvs[a * 2], chart.uvs[a * 2 + 1])} ${point(chart.uvs[b * 2], chart.uvs[b * 2 + 1])} ${point(chart.uvs[c * 2], chart.uvs[c * 2 + 1])}" fill="${chartColorCss(chart.chart)}" fill-opacity="0.42" stroke="${chartColorCss(chart.chart)}" stroke-width="1"/>`,
       );
-    }
-  }
-  if (atlas && options.placements) {
-    const resolution = options.atlasResolution ?? 2048;
-    const placements = options.placements;
-    const boundsOverlap = placements.some((a, i) => placements.slice(i + 1).some((b) => (
-      a.x < b.x + b.width && a.x + a.width > b.x
-      && a.y < b.y + b.height && a.y + a.height > b.y
-    )));
-    if (!boundsOverlap) {
-      for (const placement of placements) {
-        const x = (placement.x / resolution) * size;
-        const y = (1 - (placement.y + placement.height) / resolution) * size;
-        const w = (placement.width / resolution) * size;
-        const h = (placement.height / resolution) * size;
-        parts.push(`<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" fill="none" stroke="#f3f0e6" stroke-opacity="0.5" stroke-dasharray="4 4"/>`);
-      }
     }
   }
   parts.push('</svg>');

@@ -101,8 +101,8 @@ export function buildDensityArrays(
 
 /** Re-scales every chart so its texel density equals the target. The output UVs
  * are atlas fractions: a chart at target density occupies `worldArea *
- * (target / resolution)^2` of the atlas. Packing may later scale every chart
- * down uniformly if the target does not fit. */
+ * (target / resolution)^2` of the atlas. Packing fails if the normalized
+ * charts do not fit a single atlas. */
 export function normalizeDensity(
   mesh: ConditionedMesh,
   parameterization: ParameterizeResult,
