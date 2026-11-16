@@ -151,7 +151,6 @@ describe('CLI config building', () => {
     expect(configHelp()).toContain('--atlas');
     expect(configHelp()).toContain('--min-occupancy');
     expect(stageHelp()).toContain('condition');
-    expect(stageHelp()).toContain('relax');
     expect(stageHelp()).toContain('validate');
   });
 });

@@ -8,6 +8,7 @@ import {
   stageIndex,
   validateConfig,
 } from '../src/lib/unwrap/config';
+import type { StageId } from '../src/lib/unwrap/types';
 
 describe('unwrap config', () => {
   it('accepts the defaults', () => {
@@ -68,8 +69,8 @@ describe('unwrap config', () => {
 
   it('orders the stages', () => {
     expect(stageIndex('condition')).toBe(0);
-    expect(stageIndex('relax')).toBe(4);
-    expect(stageIndex('pack')).toBe(5);
-    expect(stageIndex('validate')).toBe(6);
+    expect(stageIndex('pack')).toBe(4);
+    expect(stageIndex('validate')).toBe(5);
+    expect(() => stageIndex('bogus' as StageId)).toThrow('Unknown stage: bogus');
   });
 });

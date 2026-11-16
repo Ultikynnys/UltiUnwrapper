@@ -4,7 +4,7 @@ import { runUnwrap } from '../src/lib/unwrap/pipeline';
 import { makeCube } from './helpers/meshes';
 
 describe('unwrap pipeline', () => {
-  it('runs seven stages and keeps a snapshot for each', () => {
+  it('runs six stages and keeps a snapshot for each', () => {
     const result = runUnwrap(makeCube(2), DEFAULT_CONFIG, {
       version: 'test',
       inputName: 'cube.obj',
@@ -14,10 +14,10 @@ describe('unwrap pipeline', () => {
       'segment',
       'parameterize',
       'normalize',
-      'relax',
       'pack',
       'validate',
     ]);
+    expect(result.stages.map((stage) => stage.index)).toEqual([0, 1, 2, 3, 4, 5]);
     expect(result.stages[0].uvs).toBeNull();
     expect(result.stages[0].charts).toBeNull();
     expect(result.stages[1].chartOfTriangle).not.toBeNull();
@@ -25,13 +25,13 @@ describe('unwrap pipeline', () => {
     expect(result.stages[2].uvs).not.toBeNull();
     expect(result.stages[2].charts).toHaveLength(6);
     expect(result.stages[4].charts).toHaveLength(6);
-    expect(result.stages[6].overlapMask).not.toBeNull();
-    expect(result.stages[6].atlas?.placements).toHaveLength(6);
+    expect(result.stages[5].overlapMask).not.toBeNull();
+    expect(result.stages[5].atlas?.placements).toHaveLength(6);
     expect(result.stages.every((stage) => stage.durationMs >= 0)).toBe(true);
     expect(result.stages.every((stage) => stage.status === 'ok')).toBe(true);
     expect(result.report.summary.status).toBe('pass');
     expect(result.report.summary.charts).toBe(6);
-    expect(result.report.stages).toHaveLength(7);
+    expect(result.report.stages).toHaveLength(6);
     expect(result.report.input).toBe('cube.obj');
   });
 
@@ -42,8 +42,8 @@ describe('unwrap pipeline', () => {
         events.push(`${progress.id}:${progress.phase}`);
       },
     });
-    expect(events).toHaveLength(14);
+    expect(events).toHaveLength(12);
     expect(events[0]).toBe('condition:start');
-    expect(events[13]).toBe('validate:done');
+    expect(events[11]).toBe('validate:done');
   });
 });

@@ -15,7 +15,7 @@ describe('report and stage SVG', () => {
     const parsed = JSON.parse(text);
     expect(parsed.tool).toBe('UltiUnwrapper');
     expect(parsed.schema).toBe(1);
-    expect(parsed.stages).toHaveLength(7);
+    expect(parsed.stages).toHaveLength(6);
     expect(parsed.summary.status).toBe('pass');
     expect(parsed.summary.atlas.placements).toBe(6);
     expect(parsed.summary.overlap.fraction).toBe(0);

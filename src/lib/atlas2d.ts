@@ -226,25 +226,6 @@ export class Atlas2D {
     context.strokeStyle = selected ? '#f3f0e6' : 'rgba(243, 240, 230, 0.42)';
     context.stroke();
 
-    const before = this.state.stage?.previousCharts?.find((candidate) => candidate.chart === chart.chart);
-    if (before) {
-      context.beginPath();
-      for (let triangle = 0; triangle < before.localIndices.length / 3; triangle += 1) {
-        const a = before.localIndices[triangle * 3];
-        const b = before.localIndices[triangle * 3 + 1];
-        const c = before.localIndices[triangle * 3 + 2];
-        context.moveTo(toX(before.uvs[a * 2]), toY(before.uvs[a * 2 + 1]));
-        context.lineTo(toX(before.uvs[b * 2]), toY(before.uvs[b * 2 + 1]));
-        context.lineTo(toX(before.uvs[c * 2]), toY(before.uvs[c * 2 + 1]));
-        context.closePath();
-      }
-      context.globalAlpha = dim ? 0.18 : 0.6;
-      context.setLineDash([3, 3]);
-      context.lineWidth = 0.8;
-      context.strokeStyle = '#f3f0e6';
-      context.stroke();
-      context.setLineDash([]);
-    }
     context.globalAlpha = 1;
   }
 

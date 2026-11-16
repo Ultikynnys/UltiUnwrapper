@@ -32,7 +32,6 @@ export const STAGE_ORDER: StageId[] = [
   'segment',
   'parameterize',
   'normalize',
-  'relax',
   'pack',
   'validate',
 ];
@@ -42,7 +41,6 @@ export const STAGE_LABELS: Record<StageId, string> = {
   segment: 'Segment',
   parameterize: 'Parameterize',
   normalize: 'Normalize density',
-  relax: 'Relax density',
   pack: 'Pack atlas',
   validate: 'Validate',
 };
@@ -160,5 +158,7 @@ export function serializePreset(config: UnwrapConfig, name: string, description 
 }
 
 export function stageIndex(stage: StageId): number {
-  return STAGE_ORDER.indexOf(stage);
+  const index = STAGE_ORDER.indexOf(stage);
+  if (index < 0) throw new Error(`Unknown stage: ${stage}`);
+  return index;
 }

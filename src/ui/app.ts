@@ -10,6 +10,7 @@ import {
   STAGE_LABELS,
   STAGE_ORDER,
   mergeConfig,
+  stageIndex,
   type UnwrapConfig,
 } from '../lib/unwrap/config';
 import { runUnwrap, type RunProgress, type UnwrapResult } from '../lib/unwrap/pipeline';
@@ -39,7 +40,6 @@ const STAGE_DESCRIPTIONS: Record<StageId, string> = {
   segment: 'Find seams and split the mesh into charts.',
   parameterize: 'Solve per-chart UVs and measure angle and area distortion.',
   normalize: 'Scale every chart toward the target texel density.',
-  relax: 'Boid regions grow low-density sections until their density difference stops falling.',
   pack: 'Place charts into the atlas and report occupancy.',
   validate: 'Rasterize overlap and rank the weakest charts.',
 };
@@ -352,7 +352,7 @@ export class App {
     if (!this.raw || this.busy) return;
     this.stopWorker();
     this.busy = true;
-    this.progress = { id: 'condition', index: 0, total: STAGE_ORDER.length, phase: 'start' };
+    this.progress = { id: 'condition', index: stageIndex('condition'), total: STAGE_ORDER.length, phase: 'start' };
     this.settingsDirty = false;
     this.runFailure = null;
     this.render();
@@ -663,7 +663,6 @@ export class App {
       area: 'Area distortion - blue low, red high',
       flipped: 'Flipped faces in magenta',
       density: 'Texel density ratio - blue under, red over',
-      densityDelta: 'Relax change - blue unchanged, red increased',
       checker: 'Checker texture - UV scale',
       overlap: 'Overlap texels in red',
     };
@@ -691,8 +690,6 @@ export class App {
       const resolution = stage.atlas?.resolution ?? 0;
       const padding = stage.atlas?.padding ?? 0;
       this.atlasHint.textContent = `${resolution} px atlas - ${padding} px padding - click a chart`;
-    } else if (stage.id === 'relax') {
-      this.atlasHint.textContent = 'Chart gallery - dashed is normalized, solid is relaxed';
     } else {
       this.atlasHint.textContent = 'Chart gallery - click a chart to inspect it';
     }
@@ -728,22 +725,6 @@ export class App {
         <span class="stat-value">${escapeHtml(formatStatValue(value))}</span>
       </div>
     `).join('');
-    const history = stage.id === 'relax' ? stage.relaxHistory ?? [] : [];
-    const historyRows = history.map((sample) => `
-      <div class="history-row">
-        <span class="history-pass">#${sample.pass}${sample.chart === undefined ? '' : ` c${sample.chart}`}</span>
-        <span class="history-diff">${sample.difference.toFixed(4)}</span>
-        <span class="history-spread">${sample.spread.toFixed(2)}</span>
-        <span class="history-min">${sample.minDensity.toFixed(2)}</span>
-      </div>
-    `).join('');
-    const historyBlock = history.length > 0
-      ? `<div class="detail-heading">Density difference per pass</div>
-         <div class="history-list">
-           <div class="history-row is-head"><span>Pass</span><span>Diff</span><span>Spread</span><span>Min</span></div>
-           ${historyRows}
-         </div>`
-      : '';
     const issues = stage.issues.length === 0
       ? '<p class="detail-empty">No issues at this stage.</p>'
       : stage.issues.map((issue) => `
@@ -754,7 +735,6 @@ export class App {
         `).join('');
     this.stageDetails.innerHTML = `
       <div class="stats-grid">${stats}</div>
-      ${historyBlock}
       <div class="detail-heading">Issues</div>
       <div class="issue-list">${issues}</div>
     `;

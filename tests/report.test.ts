@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../src/lib/unwrap/config';
 import { buildReport, reportSummary, serializeReport } from '../src/lib/unwrap/report';
-import type { ConditionedMesh, DensityResult, ParameterizeResult, PackResult } from '../src/lib/unwrap/types';
+import type { ConditionedMesh, ParameterizeResult, PackResult } from '../src/lib/unwrap/types';
 import type { ValidationResult } from '../src/lib/unwrap/validate';
 
 describe('report construction', () => {
@@ -43,7 +43,6 @@ describe('report construction', () => {
         achievedTexelDensity: 0,
       } as unknown as PackResult,
       parameterization: { charts: [] } as unknown as ParameterizeResult,
-      density: {} as DensityResult,
     });
 
     expect(report.stages[0].durationMs).toBe(1.235);
@@ -85,7 +84,6 @@ describe('report construction', () => {
         achievedTexelDensity: 0,
       } as unknown as PackResult,
       parameterization: { charts: [] } as unknown as ParameterizeResult,
-      density: {} as DensityResult,
     });
     expect(serializeReport(report).endsWith('\n')).toBe(true);
     const summary = reportSummary(report);

@@ -96,7 +96,6 @@ async function writeStageArtifacts(
       stats: stage.stats,
       issues: stage.issues,
       chartCount: stage.chartCount,
-      relaxHistory: stage.relaxHistory ?? [],
     };
     await host.writeFileBytes(host.resolvePath(jsonPath), new TextEncoder().encode(`${jsonSafe(summary)}\n`));
     written.push(jsonPath);

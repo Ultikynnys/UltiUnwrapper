@@ -2,10 +2,10 @@ import { buildReport, type UnwrapReport } from './report';
 import {
   STAGE_LABELS,
   STAGE_ORDER,
+  stageIndex,
   type UnwrapConfig,
 } from './config';
 import { normalizeDensity } from './density';
-import { relaxDensity } from './relax';
 import { conditionMesh, computeFaceGeometry, type FaceGeometry } from './mesh';
 import { packAtlas, type PackResult } from './pack';
 import { computeSeams } from './seams';
@@ -55,7 +55,6 @@ export type UnwrapResult = {
   segmentation: Segmentation;
   parameterization: ParameterizeResult;
   density: DensityResult;
-  relaxation: DensityResult;
   pack: PackResult;
   validation: ValidationResult;
   stages: StageSnapshot[];
@@ -99,12 +98,12 @@ function atlasInfo(pack: PackResult): AtlasInfo {
 export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOptions = {}): UnwrapResult {
   const stages: StageSnapshot[] = [];
   const total = STAGE_ORDER.length;
-  const emit = (id: StageId, index: number, phase: 'start' | 'done', durationMs?: number): void => {
-    options.onProgress?.({ id, index, total, phase, durationMs });
+  const emit = (id: StageId, phase: 'start' | 'done', durationMs?: number): void => {
+    options.onProgress?.({ id, index: stageIndex(id), total, phase, durationMs });
   };
 
   let started = clock();
-  emit('condition', 0, 'start');
+  emit('condition', 'start');
   const condition = conditionMesh(raw, { weldEpsilon: config.weldEpsilon });
   const topology = buildTopology(condition.mesh);
   const topologyCounts = topologyStats(topology);
@@ -122,7 +121,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
   const conditionDuration = clock() - started;
   stages.push({
     id: 'condition',
-    index: 0,
+    index: stageIndex('condition'),
     label: STAGE_LABELS.condition,
     durationMs: conditionDuration,
     status: stageStatus(conditionIssues),
@@ -141,10 +140,10 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     overlapHeight: 0,
     weaknesses: [],
   });
-  emit('condition', 0, 'done', conditionDuration);
+  emit('condition', 'done', conditionDuration);
 
   started = clock();
-  emit('segment', 1, 'start');
+  emit('segment', 'start');
   const face = computeFaceGeometry(condition.mesh);
   const preserveSourceUvs = options.preserveSourceUvs !== false && Boolean(condition.mesh.triangleUvs);
   let segmentation: Segmentation;
@@ -223,7 +222,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
   }
   stages.push({
     id: 'segment',
-    index: 1,
+    index: stageIndex('segment'),
     label: STAGE_LABELS.segment,
     durationMs: segmentDuration,
     status: stageStatus(segmentIssues),
@@ -247,13 +246,13 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     overlapHeight: 0,
     weaknesses: [],
   });
-  emit('segment', 1, 'done', segmentDuration);
+  emit('segment', 'done', segmentDuration);
 
   started = clock();
-  emit('parameterize', 2, 'start');
+  emit('parameterize', 'start');
   stages.push({
     id: 'parameterize',
-    index: 2,
+    index: stageIndex('parameterize'),
     label: STAGE_LABELS.parameterize,
     durationMs: parameterizeDuration,
     status: stageStatus(parameterization.issues),
@@ -276,10 +275,10 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     overlapHeight: 0,
     weaknesses: [],
   });
-  emit('parameterize', 2, 'done', parameterizeDuration);
+  emit('parameterize', 'done', parameterizeDuration);
 
   started = clock();
-  emit('normalize', 3, 'start');
+  emit('normalize', 'start');
   const density = normalizeDensity(condition.mesh, parameterization, face, {
     atlasResolution: config.atlasResolution,
     targetTexelDensity: config.targetTexelDensity,
@@ -287,7 +286,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
   const normalizeDuration = clock() - started;
   stages.push({
     id: 'normalize',
-    index: 3,
+    index: stageIndex('normalize'),
     label: STAGE_LABELS.normalize,
     durationMs: normalizeDuration,
     status: stageStatus(density.issues),
@@ -312,50 +311,11 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     overlapHeight: 0,
     weaknesses: [],
   });
-  emit('normalize', 3, 'done', normalizeDuration);
+  emit('normalize', 'done', normalizeDuration);
 
   started = clock();
-  emit('relax', 4, 'start');
-  const relaxation = relaxDensity(condition.mesh, density, face, {
-    atlasResolution: config.atlasResolution,
-    targetTexelDensity: config.targetTexelDensity,
-  });
-  const relaxDuration = clock() - started;
-  stages.push({
-    id: 'relax',
-    index: 4,
-    label: STAGE_LABELS.relax,
-    durationMs: relaxDuration,
-    status: stageStatus(relaxation.issues),
-    stats: relaxation.stats,
-    issues: relaxation.issues,
-    uvs: relaxation.triangleUvs,
-    chartOfTriangle: segmentation.chartOfTriangle,
-    chartCount: segmentation.charts.length,
-    seamEdges: edgeIds(segmentation.seamEdge),
-    cutEdges: segmentation.cutEdgeIndices,
-    charts: relaxation.charts,
-    previousCharts: density.charts,
-    relaxHistory: relaxation.relaxHistory ?? [],
-    atlas: null,
-    face: {
-      angleDistortion: parameterization.angleDistortion,
-      areaDistortion: parameterization.areaDistortion,
-      texelDensity: relaxation.faceTexelDensity,
-      texelDensityBefore: density.faceTexelDensity,
-      densityRatio: relaxation.densityRatio,
-      flipped: parameterization.flipped,
-    },
-    overlapMask: null,
-    overlapWidth: 0,
-    overlapHeight: 0,
-    weaknesses: [],
-  });
-  emit('relax', 4, 'done', relaxDuration);
-
-  started = clock();
-  emit('pack', 5, 'start');
-  const pack = packAtlas(condition.mesh, relaxation, face, {
+  emit('pack', 'start');
+  const pack = packAtlas(condition.mesh, density, face, {
     atlasResolution: config.atlasResolution,
     padding: config.padding,
     allowRotation: config.allowRotation,
@@ -368,7 +328,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
   const packedAtlas = atlasInfo(pack);
   stages.push({
     id: 'pack',
-    index: 5,
+    index: stageIndex('pack'),
     label: STAGE_LABELS.pack,
     durationMs: packDuration,
     status: stageStatus(pack.issues),
@@ -392,10 +352,10 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     overlapHeight: 0,
     weaknesses: [],
   });
-  emit('pack', 5, 'done', packDuration);
+  emit('pack', 'done', packDuration);
 
   started = clock();
-  emit('validate', 6, 'start');
+  emit('validate', 'start');
   const validation = validateUnwrap(condition.mesh, parameterization, pack, {
     ...config.thresholds,
     occupancyResolution: config.occupancyResolution,
@@ -403,7 +363,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
   const validateDuration = clock() - started;
   stages.push({
     id: 'validate',
-    index: 6,
+    index: stageIndex('validate'),
     label: STAGE_LABELS.validate,
     durationMs: validateDuration,
     status: validationStatus(validation.status),
@@ -427,7 +387,7 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     overlapHeight: validation.overlapHeight,
     weaknesses: validation.topWeaknesses,
   });
-  emit('validate', 6, 'done', validateDuration);
+  emit('validate', 'done', validateDuration);
 
   const report = buildReport({
     version: options.version ?? 'dev',
@@ -445,7 +405,6 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     validation,
     pack,
     parameterization,
-    density: relaxation,
   });
 
   return {
@@ -456,7 +415,6 @@ export function runUnwrap(raw: RawMesh, config: UnwrapConfig, options: RunOption
     segmentation,
     parameterization,
     density,
-    relaxation,
     pack,
     validation,
     stages,

@@ -1,7 +1,6 @@
 import type { UnwrapConfig } from './config';
 import type {
   ConditionedMesh,
-  DensityResult,
   Issue,
   PackResult,
   ParameterizeResult,
@@ -95,7 +94,6 @@ export type BuildReportInput = {
   validation: ValidationResult;
   pack: PackResult;
   parameterization: ParameterizeResult;
-  density: DensityResult;
 };
 
 export function buildReport(input: BuildReportInput): UnwrapReport {
