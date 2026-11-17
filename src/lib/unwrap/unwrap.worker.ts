@@ -1,7 +1,9 @@
 /// <reference lib="webworker" />
 import { runUnwrap } from './pipeline';
+import { createBrowserRefineRunner } from './browserRefinePool';
 import type { UnwrapConfig } from './config';
 import type { RawMesh } from './types';
+import type { RefineRunner } from './smartProject';
 
 type RunRequest = {
   type: 'run';
@@ -13,13 +15,20 @@ type RunRequest = {
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 
-scope.onmessage = (event: MessageEvent<RunRequest>) => {
+scope.onmessage = async (event: MessageEvent<RunRequest>) => {
   const request = event.data;
   if (request.type !== 'run') return;
   try {
-    const result = runUnwrap(request.raw, request.config, {
+    let refineRunner: RefineRunner | undefined;
+    try {
+      refineRunner = createBrowserRefineRunner(request.config.refineThreads).runner;
+    } catch {
+      refineRunner = undefined;
+    }
+    const result = await runUnwrap(request.raw, request.config, {
       version: request.version,
       inputName: request.inputName,
+      refineRunner,
       onProgress: (progress) => scope.postMessage({ type: 'progress', progress }),
     });
     scope.postMessage({ type: 'result', result });

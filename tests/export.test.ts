@@ -9,10 +9,14 @@ import { exportGlb } from '../src/lib/unwrap/exportGlb';
 import { exportObj } from '../src/lib/unwrap/exportObj';
 import { makeCube } from './helpers/meshes';
 
-function cubeExport() {
-  const result = runUnwrap(makeCube(2), DEFAULT_CONFIG);
-  const mesh = buildExportMesh(result.mesh, result.pack.triangleUvs);
-  return { result, mesh };
+let cubeCache: { result: Awaited<ReturnType<typeof runUnwrap>>; mesh: ReturnType<typeof buildExportMesh> } | null = null;
+
+async function cubeExport() {
+  if (!cubeCache) {
+    const result = await runUnwrap(makeCube(2), DEFAULT_CONFIG);
+    cubeCache = { result, mesh: buildExportMesh(result.mesh, result.pack.triangleUvs) };
+  }
+  return cubeCache;
 }
 
 function parseGlb(bytes: Uint8Array): Promise<Object3D> {
@@ -23,8 +27,8 @@ function parseGlb(bytes: Uint8Array): Promise<Object3D> {
 }
 
 describe('mesh export', () => {
-  it('expands the cube into one corner per triangle vertex', () => {
-    const { mesh } = cubeExport();
+  it('expands the cube into one corner per triangle vertex', async () => {
+    const { mesh } = await cubeExport();
     expect(mesh.cornerCount).toBe(36);
     expect(mesh.triangleCount).toBe(12);
     expect(mesh.indices).toHaveLength(36);
@@ -32,8 +36,8 @@ describe('mesh export', () => {
     expect(mesh.uvs).toHaveLength(72);
   });
 
-  it('round-trips through OBJLoader', () => {
-    const { mesh } = cubeExport();
+  it('round-trips through OBJLoader', async () => {
+    const { mesh } = await cubeExport();
     const text = exportObj(mesh, { name: 'Cube', version: 'test', input: 'cube.obj' });
     expect(text).toContain('g Cube');
     expect(text).toContain('vt ');
@@ -55,7 +59,7 @@ describe('mesh export', () => {
   });
 
   it('round-trips through GLTFLoader', async () => {
-    const { mesh } = cubeExport();
+    const { mesh } = await cubeExport();
     const bytes = exportGlb(mesh, { name: 'Cube', version: 'test', input: 'cube.obj' });
     const view = new DataView(bytes.buffer);
     expect(view.getUint32(0, true)).toBe(0x46546c67);
@@ -74,8 +78,8 @@ describe('mesh export', () => {
     expect(geometry!.getIndex()!.count).toBe(36);
   });
 
-  it('is deterministic', () => {
-    const { mesh } = cubeExport();
+  it('is deterministic', async () => {
+    const { mesh } = await cubeExport();
     expect(exportObj(mesh, { name: 'Cube', version: 'test' })).toBe(exportObj(mesh, { name: 'Cube', version: 'test' }));
     expect(exportGlb(mesh, { name: 'Cube', version: 'test' })).toEqual(exportGlb(mesh, { name: 'Cube', version: 'test' }));
   });

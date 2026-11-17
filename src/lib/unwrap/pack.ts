@@ -1,3 +1,4 @@
+import { alignChartsToAxes } from './chartAlign';
 import { packConcaveCharts } from './concavePack';
 import type { FaceGeometry } from './mesh';
 import { signedTriangleArea2D, summarize } from './metrics';
@@ -14,6 +15,13 @@ import type {
 
 export type { PackResult } from './types';
 
+export const PACK_SEARCH_GRID = 512;
+export const PACK_SPARSE_FILL = 0.45;
+export const PACK_MANY_CHARTS = 12;
+const PACK_FILL_FACTORS = [1.25, 1.5, 1.75, 2] as const;
+const PACK_FILL_MIN_SCALE = 0.999;
+const PACK_FILL_MAX_SCALE = 1.02;
+
 export type PackOptions = {
   atlasResolution: number;
   padding: number;
@@ -24,6 +32,9 @@ export type PackOptions = {
   /** Grow every chart uniformly until the atlas is full, instead of holding
    * the requested target density. */
   fitToAtlas?: boolean;
+  /** Rotate each chart to its smallest axis-aligned bounding box before
+   * rasterizing. Enabled by default. */
+  alignCharts?: boolean;
 };
 
 /** Packs chart silhouettes with the concave packer. Throws if the charts
@@ -45,29 +56,78 @@ export function packAtlas(
     );
   }
 
+  const alignment = options.alignCharts === false ? null : alignChartsToAxes(density.charts);
+  const sourceCharts = alignment?.charts ?? density.charts;
+  let requiredArea = 0;
+  for (const chart of sourceCharts) requiredArea += chart.uvArea;
   const fitToAtlas = Boolean(options.fitToAtlas);
   const grid = Math.min(1024, resolution);
-  const best = packConcaveCharts(density.charts, {
-    grid,
+  const searchGrid = Math.min(PACK_SEARCH_GRID, grid);
+  const attempt = (scale: number, fill: boolean, workingGrid = grid) => packConcaveCharts(sourceCharts, {
+    grid: workingGrid,
     resolution,
     padding,
     allowRotation: options.allowRotation,
-    scale: 1,
-    fill: fitToAtlas,
+    scale,
+    fill,
   });
+  let best = attempt(1, fitToAtlas);
+  if (!best && fitToAtlas) {
+    let low = 0;
+    let high = 1;
+    const areaLimit = requiredArea > 0 ? Math.sqrt(1 / requiredArea) : 1;
+    let scale = Math.min(0.9, areaLimit * 1.1);
+    for (let step = 0; step < 6 && scale > 0.02; step += 1) {
+      const trial = attempt(scale, false, searchGrid);
+      if (trial) {
+        low = scale;
+        break;
+      }
+      high = scale;
+      scale *= 0.75;
+    }
+    // Narrow the feasible range before filling, so a layout that misses at
+    // full density is not pushed all the way down to a coarse 0.75 step.
+    for (let step = 0; step < 2 && low > 0 && high - low > 0.02; step += 1) {
+      const middle = (low + high) / 2;
+      if (attempt(middle, false, searchGrid)) low = middle;
+      else high = middle;
+    }
+    if (low > 0) {
+      const coarse = attempt(low, true, searchGrid) ?? attempt(low, false, searchGrid);
+      best = attempt(low, true) ?? attempt(low, false) ?? coarse;
+    }
+  }
+  const sparseFill = best ? best.usedArea / (grid * grid) < PACK_SPARSE_FILL : false;
+  const manySmallCharts = requiredArea < PACK_SPARSE_FILL
+    && sourceCharts.length >= PACK_MANY_CHARTS;
+  if (best && fitToAtlas && best.scale >= PACK_FILL_MIN_SCALE
+    && (sparseFill || manySmallCharts)
+    && (best.scale <= PACK_FILL_MAX_SCALE || requiredArea < PACK_SPARSE_FILL)) {
+    // packConcaveCharts fills the placed layout, but a sparse first-fit
+    // arrangement can hit the atlas width before the atlas height is used.
+    // Repacking with larger input scales finds a fuller arrangement.
+    let fillScale = best.scale;
+    for (const factor of PACK_FILL_FACTORS) {
+      const trial = attempt(factor, true);
+      if (!trial) break;
+      if (trial.scale > fillScale + 1e-6) {
+        best = trial;
+        fillScale = trial.scale;
+      }
+    }
+  }
   if (!best) {
-    let requiredArea = 0;
-    for (const chart of density.charts) requiredArea += chart.uvArea;
     const hint = requiredArea > 1
       ? ' Lower targetTexelDensity or raise atlasResolution.'
       : '';
     throw new Error(
-      `Concave packing could not place ${density.charts.length} charts in a ${resolution} px atlas with ${padding} px padding. The charts cover ${(requiredArea * 100).toFixed(1)}% of the atlas at the target density.${hint}`,
+      `Concave packing could not place ${sourceCharts.length} charts in a ${resolution} px atlas with ${padding} px padding. The charts cover ${(requiredArea * 100).toFixed(1)}% of the atlas at the target density.${hint}`,
     );
   }
-  if (best.placements.length !== density.charts.length) {
+  if (best.placements.length !== sourceCharts.length) {
     throw new Error(
-      `Concave packing placed ${best.placements.length} of ${density.charts.length} charts.`,
+      `Concave packing placed ${best.placements.length} of ${sourceCharts.length} charts.`,
     );
   }
   const bestScale = best.scale;
@@ -84,7 +144,7 @@ export function packAtlas(
   const charts: PackedChart[] = [];
   const triangleUvs = new Float32Array(mesh.triangleCount * 6);
 
-  for (const chart of density.charts) {
+  for (const chart of sourceCharts) {
     const placement = innerByChart.get(chart.chart);
     if (!placement) continue;
     const innerX = placement.x;
@@ -177,7 +237,15 @@ export function packAtlas(
   const occupancy = coverage.covered / (occupancyResolution * occupancyResolution);
   const achievedTexelDensity = target * bestScale;
 
-  if (bestScale > 1.001) {
+  if (bestScale < 0.999) {
+    issues.push({
+      stage: 'pack',
+      severity: 'warn',
+      code: 'density-fitted',
+      message: `Atlas fit scaled every chart to ${achievedTexelDensity.toFixed(1)} px/unit (scale ${bestScale.toFixed(3)}).`,
+      value: Number(bestScale.toFixed(6)),
+    });
+  } else if (bestScale > 1.001) {
     issues.push({
       stage: 'pack',
       severity: 'info',
@@ -217,6 +285,9 @@ export function packAtlas(
     densityP50: Number(densitySummary.p50.toFixed(4)),
     occupancy: Number(occupancy.toFixed(6)),
     rotatedCharts: placements.filter((placement) => placement.rotation !== 0).length,
+    axisAlignedCharts: alignment?.rotated ?? 0,
+    bboxAreaBefore: Number((alignment?.areaBefore ?? 0).toFixed(6)),
+    bboxAreaAfter: Number((alignment?.areaAfter ?? 0).toFixed(6)),
   };
 
   return {

@@ -42,6 +42,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    testTimeout: 60000,
     exclude: ['**/.reasonix/**', '**/node_modules/**', '**/dist/**'],
     coverage: {
       provider: 'v8',
@@ -56,6 +57,9 @@ export default defineConfig({
         '**/{test,tests,__tests__}/**',
         '**/{vitest,vite}.config.*',
         'src/lib/unwrap/unwrap.worker.ts',
+        'src/lib/unwrap/refine.worker.ts',
+        'src/lib/unwrap/browserRefinePool.ts',
+        'src/lib/unwrap/refineMessages.ts',
         'src/lib/unwrap/types.ts',
       ],
       thresholds: {

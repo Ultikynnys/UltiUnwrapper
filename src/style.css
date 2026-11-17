@@ -409,6 +409,14 @@ button { -webkit-tap-highlight-color: transparent; border: 0; color: inherit; }
 .field-toggle { grid-column: span 1; }
 #resetSettings { grid-column: 1 / -1; justify-self: start; }
 
+.file-input-hidden {
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 1px;
+}
+
 .drop-overlay {
   background: color-mix(in srgb, var(--ink) 72%, transparent);
   display: grid;

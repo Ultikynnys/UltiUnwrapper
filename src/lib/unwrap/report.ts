@@ -6,6 +6,7 @@ import type {
   ParameterizeResult,
   StageId,
   StageStats,
+  UnwrapMethod,
 } from './types';
 import type { ValidationResult, Weakness } from './validate';
 
@@ -32,6 +33,7 @@ export type UnwrapReport = {
   input: string;
   output: string | null;
   config: UnwrapConfig;
+  method: UnwrapMethod;
   mesh: {
     vertices: number;
     triangles: number;
@@ -104,6 +106,7 @@ export function buildReport(input: BuildReportInput): UnwrapReport {
     input: input.input,
     output: input.output,
     config: input.config,
+    method: input.config.method,
     mesh: {
       vertices: input.mesh.vertexCount,
       triangles: input.mesh.triangleCount,
@@ -160,6 +163,7 @@ export function reportSummary(report: UnwrapReport): Record<string, unknown> {
     tool: report.tool,
     version: report.version,
     status: report.summary.status,
+    method: report.method,
     input: report.input,
     output: report.output,
     charts: report.summary.charts,
@@ -168,5 +172,6 @@ export function reportSummary(report: UnwrapReport): Record<string, unknown> {
     distortion: report.summary.distortion,
     overlap: report.summary.overlap,
     weaknesses: report.summary.weaknesses.length,
+    stageTimings: report.stages.map((stage) => ({ id: stage.id, durationMs: stage.durationMs })),
   };
 }

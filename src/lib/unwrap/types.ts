@@ -3,8 +3,12 @@
 export type Vec3 = [number, number, number];
 export type Vec2 = [number, number];
 
+export type UnwrapMethod = 'smart' | 'lscm';
+
 export type StageId =
   | 'condition'
+  | 'project'
+  | 'islands'
   | 'segment'
   | 'parameterize'
   | 'normalize'
@@ -133,6 +137,15 @@ export type ChartFailure =
   | 'embedding-failed'
   | 'solve-diverged'
   | 'folded-solution';
+
+/** Compact chart topology used by refinement tasks and worker messages.
+ * `faces` is grouped by chart; `axes` is three floats per chart. */
+export type ChartLayout = {
+  offsets: Uint32Array;
+  faces: Uint32Array;
+  axes: Float32Array;
+  chartCount: number;
+};
 
 export type ChartUv = {
   chart: number;

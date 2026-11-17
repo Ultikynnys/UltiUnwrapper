@@ -3,11 +3,15 @@ dist/
 dist-cli/
 coverage/
 .reasonix/
+.playwright-mcp/
+output/
+examples/*_unwrapped.obj
 *.log
 # Editor backup files (foo.png~, foo.ts~, ...)
 *~
 .DS_Store
 Thumbs.db
 src-tauri/target/
+wasm/**/target/
 src-tauri/gen/
 src-tauri/tauri.version.json

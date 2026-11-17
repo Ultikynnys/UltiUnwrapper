@@ -6,7 +6,7 @@ import { parameterizeMesh } from '../src/lib/unwrap/parameterize';
 import { normalizeDensity } from '../src/lib/unwrap/density';
 import { packAtlas, type PackOptions } from '../src/lib/unwrap/pack';
 import type { ChartPlacement, DensityOptions, RawMesh } from '../src/lib/unwrap/types';
-import { makeCube, makeCylinder, rawMesh } from './helpers/meshes';
+import { makeCube, makeCylinder, makeTwoCubes, rawMesh } from './helpers/meshes';
 
 const densityDefaults: DensityOptions = {
   atlasResolution: 2048,
@@ -151,6 +151,13 @@ describe('atlas packing', () => {
     expect(pack.issues.some((issue) => issue.code === 'density-increased')).toBe(true);
     const original = run(makeCube(2));
     expect(pack.achievedTexelDensity).toBeGreaterThan(original.pack.achievedTexelDensity);
+  });
+
+  it('repacks a sparse layout at a larger scale', () => {
+    const { pack } = run(makeTwoCubes(1, 2.5), {}, { fitToAtlas: true });
+    expect(pack.placements).toHaveLength(12);
+    expect(pack.scale).toBeGreaterThan(1.2);
+    expect(pack.occupancy).toBeGreaterThan(0.55);
   });
 
   it('throws when the target density does not fit the atlas', () => {

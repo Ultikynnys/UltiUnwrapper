@@ -34,6 +34,12 @@ export function stageHeadline(stage: StageSnapshot): string {
       return `p95 ${fixed(stage.stats.angleP95, 1)} deg`;
     case 'normalize':
       return `${fixed(stage.stats.densityP50, 0)} px/unit`;
+    case 'project':
+      return `${count(stage.stats.projections)} projections`;
+    case 'islands': {
+      const islands = Number(stage.stats.charts ?? 0);
+      return `${count(islands)} ${islands === 1 ? 'island' : 'islands'}`;
+    }
     case 'pack':
       return `${percent(stage.stats.occupancy, 0)} packed`;
     case 'validate':
@@ -72,6 +78,34 @@ export function stageCards(stage: StageSnapshot): MetricCard[] {
         { label: 'Density p50', value: `${fixed(stage.stats.densityP50, 1)} px/unit` },
         { label: 'Spread', value: percent(stage.stats.densityAfterSpread, 2) },
         { label: 'Area needed', value: percent(stage.stats.requiredAreaFraction, 1), hint: 'before packing' },
+      ];
+    case 'project':
+      return [
+        { label: 'Faces', value: count(stage.stats.faces) },
+        { label: 'Projections', value: count(stage.stats.projections) },
+        { label: 'Zero area', value: count(stage.stats.zeroAreaFaces), hint: 'ignored' },
+        { label: 'Normal dot', value: fixed(stage.stats.projectionDotMean, 3), hint: 'mean' },
+      ];
+    case 'islands':
+      return [
+        { label: 'Islands', value: count(stage.stats.charts) },
+        {
+          label: 'Strategies',
+          value: `${count(stage.stats.strategyAttempts)}/${count(stage.stats.strategyVariants)}`,
+          hint: String(stage.stats.bestVariantLabel ?? stage.stats.bestVariant ?? ''),
+        },
+        {
+          label: 'Mirror',
+          value: Number(stage.stats.mirrorPlaneScore ?? 0) > 0
+            ? percent(stage.stats.mirrorPlaneScore, 0)
+            : 'none',
+          hint: `${count(stage.stats.mirrorDetectedSeams ?? stage.stats.symmetrySeams)} detected`,
+        },
+        {
+          label: 'Island merges',
+          value: count(stage.stats.islandMerges),
+          hint: Number(stage.stats.refineStoppedEarly ?? 0) > 0 ? 'stagnated' : '',
+        },
       ];
     case 'pack':
       return [

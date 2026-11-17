@@ -32,6 +32,8 @@ export type ConcavePackResult = {
   width: number;
   height: number;
   scale: number;
+  /** Sum of occupied mask pixels on the working grid, including padding. */
+  usedArea: number;
 };
 
 type OrientedMask = {
@@ -62,6 +64,7 @@ type Attempt = {
   }>;
   width: number;
   height: number;
+  usedArea: number;
 };
 
 function rotateMask(
@@ -320,6 +323,7 @@ function packOrder(
   const occupancyWords = (grid + 31) >> 5;
   const occupancy = new Uint32Array(occupancyWords * grid);
   const placements: Attempt['placements'] = [];
+  let usedArea = 0;
   for (const item of items) {
     let best: Attempt['placements'][number] | null = null;
     for (const mask of item.masks) {
@@ -339,6 +343,7 @@ function packOrder(
     }
     if (!best) return null;
     placements.push(best);
+    usedArea += best.mask.area;
     occupy(best.mask, occupancy, occupancyWords, best.x, best.y);
   }
   let width = 0;
@@ -347,7 +352,7 @@ function packOrder(
     width = Math.max(width, placement.x + placement.mask.outerW);
     height = Math.max(height, placement.y + placement.mask.outerH);
   }
-  return { placements, width, height };
+  return { placements, width, height, usedArea };
 }
 
 function layoutScore(attempt: Attempt): number[] {
@@ -432,5 +437,6 @@ export function packConcaveCharts(
     width: best.width * fillScale,
     height: best.height * fillScale,
     scale: options.scale * fillScale,
+    usedArea: best.usedArea * fillScale * fillScale,
   };
 }

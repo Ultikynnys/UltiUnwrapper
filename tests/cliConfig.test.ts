@@ -39,7 +39,11 @@ describe('CLI parsing', () => {
       '--report', 'report.json', '--dump-stages', 'stages',
       '--preset', 'preset.json', '--dump-config', 'resolved.json',
       '--json', '--check', '--validate-only', '--rewrap', '--stage', 'pack',
+      '--method', 'lscm',
       '--atlas', '1024', '--padding', '4', '--seam-angle', '30',
+      '--projection-angle', '45', '--projection-area-weight', '0.25',
+      '--refine-budget', '5',
+      '--refine-threads', '3',
       '--texel-density', '512', '--weld-epsilon', '0.001',
       '--tolerance', '1e-6', '--max-iterations', '100',
       '--max-flipped-fraction', '0.2', '--occupancy-resolution', '128',
@@ -60,6 +64,11 @@ describe('CLI parsing', () => {
     expect(options.rewrap).toBe(true);
     expect(options.stage).toBe('pack');
     expect(options.overrides).toMatchObject({
+      method: 'lscm',
+      projectionAngleLimit: 45,
+      projectionAreaWeight: 0.25,
+      refineBudgetMs: 5000,
+      refineThreads: 3,
       atlasResolution: 1024,
       padding: 4,
       seamAngle: 30,
@@ -100,6 +109,11 @@ describe('CLI parsing', () => {
 
   it('rejects malformed and out-of-range arguments', () => {
     expect(() => parseCli(['--format', 'fbx'])).toThrow(CliError);
+    expect(() => parseCli(['--method', 'fast'])).toThrow(/must be smart or lscm/);
+    expect(() => parseCli(['--projection-angle', '200'])).toThrow(/in 0..180/);
+    expect(() => parseCli(['--projection-area-weight', '2'])).toThrow(/in 0..1/);
+    expect(() => parseCli(['--refine-budget', '121'])).toThrow(/in 0..120/);
+    expect(() => parseCli(['--refine-threads', '9'])).toThrow(/in 0..8/);
     expect(() => parseCli(['--atlas'])).toThrow(/--atlas needs a value/);
     expect(() => parseCli(['--atlas', '99999'])).toThrow(/in 16..8192/);
     expect(() => parseCli(['--padding', '-1'])).toThrow(/in 0..256/);
@@ -121,6 +135,11 @@ describe('CLI config building', () => {
     expect(config.atlasResolution).toBe(1024);
     expect(config.thresholds.maxAngleP95).toBe(12);
     expect(config.padding).toBe(DEFAULT_CONFIG.padding);
+  });
+
+  it('switches the unwrap method', async () => {
+    expect((await buildConfig(parseCli([]))).method).toBe('smart');
+    expect((await buildConfig(parseCli(['--method', 'lscm']))).method).toBe('lscm');
   });
 
   it('loads a preset and applies overrides on top', async () => {
@@ -150,7 +169,11 @@ describe('CLI config building', () => {
   it('prints flag and stage help', () => {
     expect(configHelp()).toContain('--atlas');
     expect(configHelp()).toContain('--min-occupancy');
+    expect(configHelp()).toContain('--method');
+    expect(configHelp()).toContain('--projection-area-weight');
     expect(stageHelp()).toContain('condition');
+    expect(stageHelp()).toContain('project');
+    expect(stageHelp()).toContain('parameterize');
     expect(stageHelp()).toContain('validate');
   });
 });

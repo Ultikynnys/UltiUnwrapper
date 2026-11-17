@@ -15,6 +15,8 @@ export const VIEW_LABELS: Record<StageViewMode, string> = {
 
 export const STAGE_VIEW_MODES: Record<StageId, StageViewMode[]> = {
   condition: ['clay'],
+  project: ['clay'],
+  islands: ['charts', 'clay'],
   segment: ['charts'],
   parameterize: ['distortion', 'area', 'flipped', 'charts', 'clay'],
   normalize: ['density', 'checker', 'area', 'charts'],
@@ -24,6 +26,8 @@ export const STAGE_VIEW_MODES: Record<StageId, StageViewMode[]> = {
 
 export const STAGE_DEFAULT_VIEW: Record<StageId, StageViewMode> = {
   condition: 'clay',
+  project: 'clay',
+  islands: 'charts',
   segment: 'charts',
   parameterize: 'distortion',
   normalize: 'density',
@@ -34,7 +38,7 @@ export const STAGE_DEFAULT_VIEW: Record<StageId, StageViewMode> = {
 export function atlasModeFor(stage: StageSnapshot | null): AtlasMode {
   if (!stage || !stage.charts || stage.charts.length === 0) return 'inventory';
   if (stage.id === 'pack' || stage.id === 'validate') return 'atlas';
-  if (stage.id === 'parameterize' || stage.id === 'normalize') return 'gallery';
+  if (stage.id === 'parameterize' || stage.id === 'normalize' || stage.id === 'islands') return 'gallery';
   return 'inventory';
 }
 

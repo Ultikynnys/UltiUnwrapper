@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setCliHost } from './host';
 import { nodeCliHost } from './hostNode';
+import { createNodeRefineRunner } from './refinePoolNode';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 try {
@@ -23,7 +24,9 @@ try {
 setCliHost(nodeCliHost);
 const { runCli } = await import('./main');
 
-runCli(process.argv.slice(2))
+runCli(process.argv.slice(2), {
+  createRefineRunner: (config) => createNodeRefineRunner(config.refineThreads),
+})
   .then(async (code) => {
     await nodeCliHost.flush();
     process.exitCode = code;

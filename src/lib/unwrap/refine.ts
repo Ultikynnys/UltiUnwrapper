@@ -18,10 +18,12 @@ import type {
   Segmentation,
 } from './types';
 
+export const DEFAULT_REFINE_ROUNDS = 24;
+
 export type RefineOptions = SegmentOptions & {
   /** Largest allowed spread of triangle texel density inside one chart. */
   maxDensitySpread: number;
-  /** Cut rounds before giving up. Default 12. */
+  /** Cut rounds before giving up. Default 24. */
   maxRounds?: number;
   /** Chart cap; refinement stops before going past it. Default 4096. */
   maxCharts?: number;
@@ -111,7 +113,7 @@ export function refineUnwrap(
   face: FaceGeometry,
   options: RefineOptions,
 ): RefineResult {
-  const rounds = Math.max(1, options.maxRounds ?? 12);
+  const rounds = Math.max(1, options.maxRounds ?? DEFAULT_REFINE_ROUNDS);
   const maxCharts = Math.max(1, options.maxCharts ?? 4096);
   const minChartTriangles = Math.max(1, options.minChartTriangles ?? 64);
   const seams: SeamResult = computeSeams(mesh, topology, face, options);

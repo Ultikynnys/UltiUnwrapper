@@ -8,13 +8,15 @@ import { serializeReport } from '../lib/unwrap/report';
 import {
   DEFAULT_CONFIG,
   STAGE_LABELS,
-  STAGE_ORDER,
   mergeConfig,
   stageIndex,
+  stagePlan,
   type UnwrapConfig,
 } from '../lib/unwrap/config';
 import { runUnwrap, type RunProgress, type UnwrapResult } from '../lib/unwrap/pipeline';
-import type { RawMesh, StageId, StageSnapshot, WeaknessKind } from '../lib/unwrap/types';
+import { createBrowserRefineRunner } from '../lib/unwrap/browserRefinePool';
+import type { RefineRunner } from '../lib/unwrap/smartProject';
+import type { RawMesh, StageId, StageSnapshot, UnwrapMethod, WeaknessKind } from '../lib/unwrap/types';
 import { flattenScene } from '../lib/threeGeometry';
 import { createModelFileBundle, type ModelFileBundle } from '../lib/modelFiles';
 import { loadModelFromBundle } from '../lib/modelLoad';
@@ -37,6 +39,8 @@ type WorkerMessage =
 
 const STAGE_DESCRIPTIONS: Record<StageId, string> = {
   condition: 'Weld vertices, drop degenerates, and measure the input.',
+  project: 'Cluster face normals and project every face along its dominant axis.',
+  islands: 'Cut and merge projected islands until texel density is uniform.',
   segment: 'Find seams and split the mesh into charts.',
   parameterize: 'Solve per-chart UVs and measure angle and area distortion.',
   normalize: 'Scale every chart toward the target texel density.',
@@ -141,7 +145,7 @@ export class App {
   private readonly histogram = byId<HTMLCanvasElement>('histogram');
   private readonly weaknessMeta = byId<HTMLSpanElement>('weaknessMeta');
   private readonly weaknessList = byId<HTMLDivElement>('weaknessList');
-  private readonly importModel = byId<HTMLButtonElement>('importModel');
+  private readonly importModel = byId<HTMLLabelElement>('importModel');
   private readonly loadDemo = byId<HTMLButtonElement>('loadDemo');
   private readonly runButton = byId<HTMLButtonElement>('runUnwrap');
   private readonly exportObjButton = byId<HTMLButtonElement>('exportObj');
@@ -150,6 +154,7 @@ export class App {
   private readonly modelFileInput = byId<HTMLInputElement>('modelFileInput');
   private readonly dropOverlay = byId<HTMLDivElement>('dropOverlay');
   private readonly toast = byId<HTMLDivElement>('toast');
+  private readonly settingMethod = byId<HTMLSelectElement>('settingMethod');
   private readonly settingAtlas = byId<HTMLSelectElement>('settingAtlas');
   private readonly settingPadding = byId<HTMLInputElement>('settingPadding');
   private readonly settingSeamAngle = byId<HTMLInputElement>('settingSeamAngle');
@@ -197,11 +202,20 @@ export class App {
   }
 
   private bindEvents(): void {
-    this.importModel.addEventListener('click', () => this.modelFileInput.click());
+    this.importModel.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      this.modelFileInput.click();
+    });
     this.loadDemo.addEventListener('click', () => this.loadDemoMesh());
     this.modelFileInput.addEventListener('change', () => {
       const files = this.modelFileInput.files;
-      if (files) void this.importFiles(files);
+      if (files && files.length > 0) {
+        void this.importFiles(files).finally(() => {
+          this.modelFileInput.value = '';
+        });
+        return;
+      }
       this.modelFileInput.value = '';
     });
     this.runButton.addEventListener('click', () => this.run());
@@ -237,6 +251,7 @@ export class App {
         (item.dataset.kind ?? 'angle') as WeaknessKind,
       );
     });
+    this.settingMethod.addEventListener('change', () => this.onSettingsChanged());
     this.settingAtlas.addEventListener('change', () => this.onSettingsChanged());
     this.settingPadding.addEventListener('input', () => this.onSettingsChanged());
     this.settingSeamAngle.addEventListener('input', () => this.onSettingsChanged());
@@ -352,7 +367,7 @@ export class App {
     if (!this.raw || this.busy) return;
     this.stopWorker();
     this.busy = true;
-    this.progress = { id: 'condition', index: stageIndex('condition'), total: STAGE_ORDER.length, phase: 'start' };
+    this.progress = { id: 'condition', index: stageIndex('condition', this.config.method), total: stagePlan(this.config.method).length, phase: 'start' };
     this.settingsDirty = false;
     this.runFailure = null;
     this.render();
@@ -382,7 +397,7 @@ export class App {
         inputName: this.modelName,
       });
     } catch (error) {
-      this.runSynchronously(error);
+      void this.runSynchronously(error);
     }
   }
 
@@ -399,14 +414,21 @@ export class App {
     this.finishError(new Error(message.message));
   }
 
-  private runSynchronously(reason: unknown): void {
+  private async runSynchronously(reason: unknown): Promise<void> {
     if (!this.raw) return;
     console.warn('Falling back to the main thread:', errorMessage(reason));
     this.showToast('Worker unavailable, running on the main thread.', 'warn');
     try {
-      const result = runUnwrap(this.raw, this.config, {
+      let refineRunner: RefineRunner | undefined;
+      try {
+        refineRunner = createBrowserRefineRunner(this.config.refineThreads).runner;
+      } catch {
+        refineRunner = undefined;
+      }
+      const result = await runUnwrap(this.raw, this.config, {
         version: BUILD_VERSION,
         inputName: this.modelName,
+        refineRunner,
         onProgress: (progress) => {
           this.progress = progress;
           this.render();
@@ -424,7 +446,7 @@ export class App {
     this.runFailure = null;
     this.busy = false;
     this.progress = null;
-    this.selectedStage = STAGE_ORDER.length - 1;
+    this.selectedStage = stagePlan(result.config.method).length - 1;
     this.selectedChart = null;
     this.viewModeValue = 'overlap';
     this.render();
@@ -469,7 +491,7 @@ export class App {
   }
 
   private focusWeakness(chart: number, kind: WeaknessKind): void {
-    this.selectedStage = STAGE_ORDER.length - 1;
+    this.selectedStage = (this.result?.stages.length ?? 1) - 1;
     this.selectedChart = chart;
     this.viewModeValue = weaknessViewMode(kind);
     this.render();
@@ -482,6 +504,7 @@ export class App {
       return Number.isFinite(value) ? clamp(value, min, max) : fallback;
     };
     this.config = mergeConfig(base, {
+      method: this.settingMethod.value as UnwrapMethod,
       atlasResolution: Number(this.settingAtlas.value),
       padding: Math.round(number(this.settingPadding, base.padding, 0, 256)),
       seamAngle: number(this.settingSeamAngle, base.seamAngle, 0, 180),
@@ -495,6 +518,7 @@ export class App {
   }
 
   private syncSettings(): void {
+    this.settingMethod.value = this.config.method;
     this.settingAtlas.value = String(this.config.atlasResolution);
     this.settingPadding.value = String(this.config.padding);
     this.settingSeamAngle.value = String(this.config.seamAngle);
@@ -544,10 +568,12 @@ export class App {
 
   private renderSteps(): void {
     const progress = this.progress;
-    const items = STAGE_ORDER.map((id, index) => {
-      const snapshot = this.result?.stages[index] ?? null;
+    const plan = stagePlan(this.result?.config.method ?? this.config.method);
+    const currentId = this.currentStage?.id ?? null;
+    const items = plan.map((id, index) => {
+      const snapshot = this.result?.stages.find((stage) => stage.id === id) ?? null;
       const running = this.busy && progress?.id === id;
-      const selected = Boolean(this.result) && this.selectedStage === index;
+      const selected = currentId === id;
       const nonInfo = snapshot
         ? snapshot.issues.filter((issue) => issue.severity !== 'info')
         : [];
@@ -584,7 +610,7 @@ export class App {
     if (this.busy && progress) {
       this.stageProgress.textContent = `${Math.min(progress.index + 1, progress.total)} / ${progress.total} running`;
     } else if (this.result) {
-      this.stageProgress.textContent = `${this.result.stages.length} / ${STAGE_ORDER.length} complete`;
+      this.stageProgress.textContent = `${this.result.stages.length} / ${stagePlan(this.result.config.method).length} complete`;
     } else {
       this.stageProgress.textContent = 'not run';
     }
@@ -718,7 +744,7 @@ export class App {
       this.stageDetails.innerHTML = '<p class="inspector-empty">Stats and issues for the selected stage.</p>';
       return;
     }
-    this.detailsMeta.textContent = `Stage ${stage.index + 1} / ${STAGE_ORDER.length}`;
+    this.detailsMeta.textContent = `Stage ${stage.index + 1} / ${stagePlan(this.result?.config.method ?? this.config.method).length}`;
     const stats = Object.entries(stage.stats).map(([key, value]) => `
       <div class="stat-row">
         <span class="stat-key">${escapeHtml(statLabel(key))}</span>

@@ -4,6 +4,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { setCliHost } from '../../cli/host';
 import { runCli } from '../../cli/main';
+import { createBrowserRefineRunner } from '../lib/unwrap/browserRefinePool';
 import { createWebviewHost } from './hostWebview';
 
 async function run(): Promise<void> {
@@ -14,7 +15,9 @@ async function run(): Promise<void> {
 
   let code = 1;
   try {
-    code = await runCli(args);
+    code = await runCli(args, {
+      createRefineRunner: (config) => createBrowserRefineRunner(config.refineThreads),
+    });
   } catch (error) {
     host.error(`error: ${(error as Error)?.stack ?? String(error)}\n`);
   }

@@ -4,7 +4,7 @@ import { conditionMesh, computeFaceGeometry } from '../src/lib/unwrap/mesh';
 import { buildTopology } from '../src/lib/unwrap/topology';
 import { computeSeams } from '../src/lib/unwrap/seams';
 import { segmentFromSeams } from '../src/lib/unwrap/charts';
-import { DEFAULT_CONFIG } from '../src/lib/unwrap/config';
+import { DEFAULT_CONFIG, mergeConfig } from '../src/lib/unwrap/config';
 import { runUnwrap } from '../src/lib/unwrap/pipeline';
 import type { RawMesh } from '../src/lib/unwrap/types';
 
@@ -44,6 +44,8 @@ function withUnevenUvScale(segments = 10): RawMesh {
   return { ...base, triangleUvs };
 }
 
+const base = mergeConfig(DEFAULT_CONFIG, { method: 'lscm' });
+
 describe('source UV seams', () => {
   it('marks UV discontinuities as seams and keeps the islands separate', () => {
     const raw = withUvIslands();
@@ -67,21 +69,21 @@ describe('source UV seams', () => {
     expect(withoutCounts.charts).toHaveLength(6);
   });
 
-  it('preserves source UV charts unless a rewrap is requested', () => {
+  it('preserves source UV charts unless a rewrap is requested', async () => {
     const raw = withUvIslands();
-    const preserved = runUnwrap(raw, DEFAULT_CONFIG);
+    const preserved = await runUnwrap(raw, base);
     expect(preserved.segmentation.charts).toHaveLength(6);
     expect(preserved.parameterization.stats.harmonicCharts).toBe(0);
     expect(preserved.parameterization.issues.some((issue) => issue.code === 'source-uvs-preserved')).toBe(true);
     expect(preserved.stages[2].stats.charts).toBe(6);
 
-    const rewrapped = runUnwrap(raw, DEFAULT_CONFIG, { preserveSourceUvs: false });
+    const rewrapped = await runUnwrap(raw, base, { preserveSourceUvs: false });
     expect(rewrapped.parameterization.issues.some((issue) => issue.code === 'source-uvs-preserved')).toBe(false);
   });
 
-  it('cuts source UV charts further when they miss the density budget', () => {
+  it('cuts source UV charts further when they miss the density budget', async () => {
     const raw = withUnevenUvScale();
-    const result = runUnwrap(raw, DEFAULT_CONFIG);
+    const result = await runUnwrap(raw, base);
     expect(result.parameterization.issues.some((issue) => issue.code === 'source-uvs-preserved')).toBe(true);
     expect(result.segmentation.charts.length).toBeGreaterThan(1);
     expect(Number(result.stages[1].stats.refineSeamsAdded)).toBeGreaterThan(0);

@@ -1,7 +1,8 @@
 import {
   DEFAULT_CONFIG,
+  STAGE_IDS,
   STAGE_LABELS,
-  STAGE_ORDER,
+  STAGE_PLANS,
   mergeConfig,
   parsePresetText,
   validateConfig,
@@ -47,8 +48,8 @@ function numberValue(flag: string, value: string | undefined, min: number, max: 
 
 function stageValue(flag: string, value: string | undefined): StageId {
   if (value === undefined) throw new CliError(`${flag} needs a stage id.`);
-  if (!STAGE_ORDER.includes(value as StageId)) {
-    throw new CliError(`${flag} must be one of: ${STAGE_ORDER.join(', ')}.`);
+  if (!STAGE_IDS.includes(value as StageId)) {
+    throw new CliError(`${flag} must be one of: ${STAGE_IDS.join(', ')}.`);
   }
   return value as StageId;
 }
@@ -104,6 +105,18 @@ export function parseCli(argv: string[]): CliOptions {
         options.format = value;
         break;
       }
+      case '--method': {
+        const value = next();
+        if (value !== 'smart' && value !== 'lscm') throw new CliError('--method must be smart or lscm.');
+        options.overrides.method = value;
+        break;
+      }
+      case '--projection-angle':
+        options.overrides.projectionAngleLimit = numberValue(arg, next(), 0, 180);
+        break;
+      case '--projection-area-weight':
+        options.overrides.projectionAreaWeight = numberValue(arg, next(), 0, 1);
+        break;
       case '--report':
         options.report = next() ?? (() => { throw new CliError('--report needs a path.'); })();
         break;
@@ -164,6 +177,12 @@ export function parseCli(argv: string[]): CliOptions {
         break;
       case '--max-flipped-fraction':
         options.overrides.maxFlippedFraction = numberValue(arg, next(), 0, 1);
+        break;
+      case '--refine-budget':
+        options.overrides.refineBudgetMs = numberValue(arg, next(), 0, 120) * 1000;
+        break;
+      case '--refine-threads':
+        options.overrides.refineThreads = numberValue(arg, next(), 0, 8);
         break;
       case '--occupancy-resolution':
         options.overrides.occupancyResolution = numberValue(arg, next(), 64, 4096);
@@ -244,9 +263,14 @@ export async function buildConfig(options: CliOptions): Promise<UnwrapConfig> {
 
 export function configHelp(): string {
   const d = DEFAULT_CONFIG;
-  return `  --atlas <n>                Atlas resolution in pixels [${d.atlasResolution}]
+  return `  --method <smart|lscm>      Unwrap method [${d.method}]
+  --atlas <n>                Atlas resolution in pixels [${d.atlasResolution}]
   --padding <n>              Minimum chart gap in pixels [${d.padding}]
   --seam-angle <deg>         Dihedral seam threshold [${d.seamAngle}]
+  --projection-angle <deg>   Smart projection angle limit [${d.projectionAngleLimit}]
+  --projection-area-weight <f> Smart projection area weight [${d.projectionAreaWeight}]
+  --refine-budget <s>        Island refinement budget in seconds [${(d.refineBudgetMs / 1000).toFixed(0)}]
+  --refine-threads <n>       Refinement threads, 0 = auto [${d.refineThreads}]
   --texel-density <px/u>     Target texel density [${d.targetTexelDensity}]
   --weld-epsilon <f>         Weld tolerance / bbox diagonal [${d.weldEpsilon}]
   --tolerance <f>            LSCM relative residual [${d.tolerance}]
@@ -269,7 +293,7 @@ export function configHelp(): string {
   --dump-config [<file>]     Write the resolved settings and exit
   --report <file>            Write the JSON report
   --dump-stages <dir>        Write per-stage JSON, OBJ, and SVG artifacts
-  --stage <id>               Stop writing after this stage (${STAGE_ORDER.join(', ')})
+  --stage <id>               Stop writing after this stage (see --list-stages)
   --validate-only            Run all stages but skip the mesh export
   --json                     Print a machine-readable summary
   --check                    Exit 1 when validation crosses a threshold
@@ -279,5 +303,12 @@ export function configHelp(): string {
 }
 
 export function stageHelp(): string {
-  return STAGE_ORDER.map((stage, index) => `  ${index + 1}. ${stage.padEnd(14)} ${STAGE_LABELS[stage]}`).join('\n');
+  const plans: Array<[string, readonly string[]]> = [
+    ['smart', STAGE_PLANS.smart],
+    ['lscm', STAGE_PLANS.lscm],
+  ];
+  return plans.map(([method, plan]) => [
+    `${method}:`,
+    ...plan.map((stage, index) => `  ${index + 1}. ${stage.padEnd(14)} ${STAGE_LABELS[stage as StageId]}`),
+  ].join('\n')).join('\n\n');
 }

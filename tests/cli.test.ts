@@ -70,10 +70,10 @@ describe('CLI', () => {
     const code = await runCli(['-i', fixture, '--dump-stages', stages, '--validate-only']);
     expect(code).toBe(0);
     expect(await readFile(join(stages, 'stage-01-condition.json'), 'utf8')).toContain('inputTriangles');
-    expect(await readFile(join(stages, 'stage-02-segment.json'), 'utf8')).toContain('charts');
-    expect(await readFile(join(stages, 'stage-03-parameterize.json'), 'utf8')).toContain('angleP95');
-    expect(await readFile(join(stages, 'stage-03-parameterize.obj'), 'utf8')).toContain('vt ');
-    expect(await readFile(join(stages, 'stage-03-parameterize.svg'), 'utf8')).toContain('<svg');
+    expect(await readFile(join(stages, 'stage-02-project.json'), 'utf8')).toContain('projections');
+    expect(await readFile(join(stages, 'stage-03-islands.json'), 'utf8')).toContain('charts');
+    expect(await readFile(join(stages, 'stage-03-islands.obj'), 'utf8')).toContain('vt ');
+    expect(await readFile(join(stages, 'stage-03-islands.svg'), 'utf8')).toContain('<svg');
     expect(await readFile(join(stages, 'stage-05-pack.svg'), 'utf8')).toContain('<polygon');
     expect(await readFile(join(stages, 'stage-06-validate.json'), 'utf8')).toContain('overlapFraction');
   });

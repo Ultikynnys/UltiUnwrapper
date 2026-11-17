@@ -1,0 +1,15 @@
+[package]
+name = "ultiunwrapper-refine"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ultiunwrapper_refine"
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

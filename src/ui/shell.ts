@@ -14,7 +14,7 @@ export function renderShell(root: HTMLElement): void {
         </div>
         <div class="topbar-actions">
           <button class="button button-quiet" id="loadDemo" type="button">Demo cube</button>
-          <button class="button" id="importModel" type="button">Import model</button>
+          <label class="button" id="importModel" for="modelFileInput" role="button" tabindex="0">Import model</label>
           <button class="button button-primary" id="runUnwrap" type="button" disabled>Unwrap</button>
           <span class="topbar-divider" aria-hidden="true"></span>
           <button class="button button-quiet" id="exportObj" type="button" title="Download unwrapped OBJ" disabled>OBJ</button>
@@ -110,6 +110,13 @@ export function renderShell(root: HTMLElement): void {
           </div>
           <div class="settings-panel" id="settingsPanel">
             <label class="field">
+              <span>Unwrap method</span>
+              <select id="settingMethod">
+                <option value="smart" selected>Smart project</option>
+                <option value="lscm">LSCM</option>
+              </select>
+            </label>
+            <label class="field">
               <span>Atlas resolution</span>
               <select id="settingAtlas">
                 <option value="512">512 px</option>
@@ -147,7 +154,7 @@ export function renderShell(root: HTMLElement): void {
         </aside>
       </main>
 
-      <input id="modelFileInput" type="file" accept=".fbx,.obj,.gltf,.glb,.usdz" multiple hidden />
+      <input id="modelFileInput" class="file-input-hidden" type="file" accept=".fbx,.obj,.gltf,.glb,.usdz" multiple />
       <div class="drop-overlay" id="dropOverlay" hidden><span>Drop model bundle</span></div>
       <div class="toast" id="toast" hidden></div>
     </div>

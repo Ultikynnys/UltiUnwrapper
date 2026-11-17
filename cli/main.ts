@@ -6,15 +6,16 @@
 import { BUILD_VERSION } from '../src/lib/buildInfo';
 import { flattenScene } from '../src/lib/threeGeometry';
 import {
-  STAGE_ORDER,
   serializePreset,
   stageIndex,
+  stagePlan,
   type UnwrapConfig,
 } from '../src/lib/unwrap/config';
 import { buildExportMesh } from '../src/lib/unwrap/exportMesh';
 import { exportGlb } from '../src/lib/unwrap/exportGlb';
 import { exportObj } from '../src/lib/unwrap/exportObj';
 import { runUnwrap, type UnwrapResult } from '../src/lib/unwrap/pipeline';
+import type { RefineRunner } from '../src/lib/unwrap/smartProject';
 import { reportSummary, serializeReport } from '../src/lib/unwrap/report';
 import { renderChartsSvg } from '../src/lib/unwrap/svg';
 import { buildConfig, CliError, configHelp, parseCli, stageHelp, type CliFormat, type CliOptions } from './config';
@@ -71,8 +72,8 @@ function outputPath(options: CliOptions, input: string, format: CliFormat): stri
   return join(dirname(input), `${basename(input, extname(input))}_unwrapped.${format}`);
 }
 
-function stageLimit(options: CliOptions): number {
-  return options.stage ? stageIndex(options.stage) : STAGE_ORDER.length - 1;
+function stageLimit(options: CliOptions, config: UnwrapConfig): number {
+  return options.stage ? stageIndex(options.stage, config.method) : stagePlan(config.method).length - 1;
 }
 
 async function writeStageArtifacts(
@@ -141,7 +142,14 @@ function humanResult(
   return `${lines.join('\n')}\n`;
 }
 
-export async function runCli(argv: string[]): Promise<number> {
+export type CliRunnerOptions = {
+  createRefineRunner?: (config: UnwrapConfig) => {
+    runner: RefineRunner;
+    dispose: () => void;
+  };
+};
+
+export async function runCli(argv: string[], runners: CliRunnerOptions = {}): Promise<number> {
   const host = cliHost();
   let options: CliOptions;
   try {
@@ -208,28 +216,45 @@ export async function runCli(argv: string[]): Promise<number> {
   const input = options.input;
   const format = resolveFormat(options, options.output);
   const output = outputPath(options, input, format);
-  const limit = stageLimit(options);
-  const willWrite = !options.validateOnly && limit >= stageIndex('pack');
+  let limit: number;
+  try {
+    limit = stageLimit(options, config);
+  } catch (error) {
+    host.error(`error: ${(error as Error).message}\n`);
+    await host.flush();
+    return 2;
+  }
+  const willWrite = !options.validateOnly && limit >= stageIndex('pack', config.method);
   const reportPath = options.report ? host.resolvePath(options.report) : null;
 
   let result: UnwrapResult;
+  let disposeRefine = (): void => {};
   try {
     const scene = await loadModel(host.resolvePath(input));
     const flattened = flattenScene(scene);
     if (flattened.mesh.indices.length === 0) {
       throw new CliError('The model has no visible triangles.');
     }
-    result = runUnwrap(flattened.mesh, config, {
+    let refineRunner: RefineRunner | undefined;
+    if (runners.createRefineRunner && config.method === 'smart' && config.refineThreads !== 1) {
+      const pool = runners.createRefineRunner(config);
+      refineRunner = pool.runner;
+      disposeRefine = pool.dispose;
+    }
+    result = await runUnwrap(flattened.mesh, config, {
       version: BUILD_VERSION,
       inputName: basename(input),
       output: willWrite ? output : undefined,
       preserveSourceUvs: !options.rewrap,
+      refineRunner,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     host.error(`error: ${message}\n`);
     await host.flush();
     return 2;
+  } finally {
+    disposeRefine();
   }
 
   if (willWrite) {

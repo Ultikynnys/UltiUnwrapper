@@ -55,6 +55,31 @@ describe('stage headlines', () => {
     expect(cards[2].value).toBe('2.00%');
   });
 
+  it('reports strategy and mirror state for islands', () => {
+    const cards = stageCards(stage('islands', {
+      charts: 142,
+      strategyAttempts: 21,
+      strategyVariants: 4,
+      bestVariant: 'growth-0.50',
+      bestVariantLabel: 'balanced',
+      mirrorPlaneScore: 1,
+      mirrorDetectedSeams: 12,
+      symmetrySeams: 0,
+      islandMerges: 216,
+      refineStoppedEarly: 0,
+    }, 'ok'));
+    expect(cards.map((card) => card.label)).toEqual([
+      'Islands',
+      'Strategies',
+      'Mirror',
+      'Island merges',
+    ]);
+    expect(cards[1].value).toBe('21/4');
+    expect(cards[1].hint).toBe('balanced');
+    expect(cards[2].value).toBe('100%');
+    expect(cards[2].hint).toBe('12 detected');
+  });
+
   it('formats numeric, boolean, and missing stat values', () => {
     expect(formatStatValue(1024)).toBe('1,024');
     expect(formatStatValue(0.123456)).toBe('0.1235');
